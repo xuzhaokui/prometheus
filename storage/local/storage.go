@@ -668,6 +668,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 		for fp, fastfp := range merged {
 			for _, v := range values {
 				if v == "" {
+					new[fp] = fastfp
 					continue
 				}
 
