@@ -86,7 +86,12 @@ func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.Labe
 	}
 	if matchType == ListMatch || matchType == ListNoMatch {
 		m.lst = map[string]struct{}{}
-		for _, x := range strings.Split(string(value), ",") {
+		s := ","
+		if strings.HasPrefix(string(value), "/") && strings.HasSuffix(string(value), "/") {
+			s = "|"
+			value = model.LabelValue(strings.Replace(string(value), `\`, "", -1))
+		}
+		for _, x := range strings.Split(string(value), s) {
 			m.lst[x] = struct{}{}
 			m.Values = append(m.Values, model.LabelValue(x))
 		}
