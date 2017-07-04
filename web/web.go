@@ -175,6 +175,7 @@ func New(o *Options) *Handler {
 	})
 
 	router.Get("/alerts", instrf("alerts", h.alerts))
+	router.Get("/alerts.json", instrf("alerts", h.alerts_json))
 	router.Get("/graph", instrf("graph", h.graph))
 	router.Get("/status", instrf("status", h.status))
 	router.Get("/flags", instrf("flags", h.flags))
@@ -286,6 +287,44 @@ func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	h.executeTemplate(w, "alerts.html", alertStatus)
+}
+
+func (h *Handler) alerts_json(w http.ResponseWriter, r *http.Request) {
+
+	type alert struct {
+		Name   string            `json:"name"`
+		Metric map[string]string `json:"metric"`
+		Value  float64           `json:"value"`
+		Status int               `json:"status"`
+	}
+
+	ret := []*alert{}
+
+	alerts := h.ruleManager.AlertingRules()
+
+	for _, x := range alerts {
+		for _, y := range x.ActiveAlerts() {
+			r := &alert{
+				Name:   x.Name(),
+				Metric: map[string]string{},
+				Value:  float64(y.Value),
+				Status: int(y.State),
+			}
+			for k, v := range y.Labels {
+				r.Metric[string(k)] = string(v)
+			}
+			ret = append(ret, r)
+		}
+	}
+
+	b, err := json.Marshal(ret)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(b)
 }
 
 func (h *Handler) consoles(w http.ResponseWriter, r *http.Request) {
