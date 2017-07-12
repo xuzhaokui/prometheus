@@ -1297,6 +1297,7 @@ func (s *MemorySeriesStorage) cycleThroughMemoryFingerprints() chan model.Finger
 				}
 				// Reduce the wait time according to the urgency score.
 				s.waitForNextFP(s.fpToSeries.length(), 1-s.calculatePersistenceUrgencyScore())
+				//s.waitForNextFP(s.fpToSeries.length(), math.Max(persintenceUrgencyScoreForEnteringRushedMode-s.calculatePersistenceUrgencyScore(), 0))
 				count++
 			}
 			if count > 0 {
