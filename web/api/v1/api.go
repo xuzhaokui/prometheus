@@ -168,8 +168,16 @@ func (api *API) query(r *http.Request) (interface{}, *apiError) {
 	} else {
 		ts = api.now()
 	}
+	var step time.Duration
+	if s := r.FormValue("step"); s != "" {
+		var err error
+		step, err = parseDuration(s)
+		if err != nil {
+			return nil, &apiError{errorBadData, err}
+		}
+	}
 
-	qry, err := api.QueryEngine.NewInstantQuery(r.FormValue("query"), ts)
+	qry, err := api.QueryEngine.NewInstantQuery(r.FormValue("query"), ts, step)
 	if err != nil {
 		return nil, &apiError{errorBadData, err}
 	}

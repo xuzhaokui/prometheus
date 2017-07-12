@@ -57,7 +57,7 @@ func (q queryResultByLabelSorter) Swap(i, j int) {
 }
 
 func query(ctx context.Context, q string, timestamp model.Time, queryEngine *promql.Engine) (queryResult, error) {
-	query, err := queryEngine.NewInstantQuery(q, timestamp)
+	query, err := queryEngine.NewInstantQuery(q, timestamp, 0)
 	if err != nil {
 		return nil, err
 	}
