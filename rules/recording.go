@@ -47,7 +47,7 @@ func (rule RecordingRule) Name() string {
 
 // Eval evaluates the rule and then overrides the metric names and labels accordingly.
 func (rule RecordingRule) Eval(ctx context.Context, timestamp model.Time, engine *promql.Engine, _ string) (model.Vector, error) {
-	query, err := engine.NewInstantQuery(rule.vector.String(), timestamp)
+	query, err := engine.NewInstantQuery(rule.vector.String(), timestamp, 0)
 	if err != nil {
 		return nil, err
 	}

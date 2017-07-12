@@ -363,6 +363,7 @@ Prometheus.Graph.prototype.submitQuery = function() {
   var startTime = new Date().getTime();
   var rangeSeconds = self.parseDuration(self.rangeInput.val());
   var resolution = self.queryForm.find("input[name=step_input]").val() || Math.max(Math.floor(rangeSeconds / 250), 1);
+  var staleness = self.queryForm.find("input[name=sd_input]").val() || 0;
   var endDate = self.getEndDate() / 1000;
 
   if (self.queryXhr) {
@@ -381,6 +382,7 @@ Prometheus.Graph.prototype.submitQuery = function() {
     success = function(json, textStatus) { self.handleGraphResponse(json, textStatus); };
   } else {
     params.time = startTime / 1000;
+    params.step = staleness;
     url = PATH_PREFIX + "/api/v1/query";
     success = function(json, textStatus) { self.handleConsoleResponse(json, textStatus); };
   }
@@ -634,7 +636,7 @@ Prometheus.Graph.prototype.handleConsoleResponse = function(data, textStatus) {
     for (var i = 0; i < data.result.length; i++) {
       var s = data.result[i];
       var tsName = self.metricToTsName(s.metric);
-      tBody.append("<tr><td>" + escapeHTML(tsName) + "</td><td>" + s.value[1] + "</td></tr>");
+      tBody.append("<tr><td>" + escapeHTML(tsName) + "</td><td>" + s.value[1] + " @" + s.value[0] + "</td></tr>");
     }
     break;
   case "matrix":

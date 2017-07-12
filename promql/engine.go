@@ -292,12 +292,12 @@ var DefaultEngineOptions = &EngineOptions{
 }
 
 // NewInstantQuery returns an evaluation query for the given expression at the given time.
-func (ng *Engine) NewInstantQuery(qs string, ts model.Time) (Query, error) {
+func (ng *Engine) NewInstantQuery(qs string, ts model.Time, interval time.Duration) (Query, error) {
 	expr, err := ParseExpr(qs)
 	if err != nil {
 		return nil, err
 	}
-	qry := ng.newQuery(expr, ts, ts, 0)
+	qry := ng.newQuery(expr, ts, ts, interval)
 	qry.q = qs
 
 	return qry, nil
@@ -411,10 +411,11 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 
 	evalTimer := query.stats.GetTimer(stats.InnerEvalTime).Start()
 	// Instant evaluation.
-	if s.Start == s.End && s.Interval == 0 {
+	if s.Start == s.End {
 		evaluator := &evaluator{
-			Timestamp: s.Start,
-			ctx:       ctx,
+			Timestamp:      s.Start,
+			ctx:            ctx,
+			StalenessDelta: s.Interval,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
@@ -444,8 +445,9 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 		}
 
 		evaluator := &evaluator{
-			Timestamp: ts,
-			ctx:       ctx,
+			Timestamp:      ts,
+			ctx:            ctx,
+			StalenessDelta: s.Interval,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
@@ -515,13 +517,17 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, s *EvalStmt) error {
 	var queryErr error
 	Inspect(s.Expr, func(node Node) bool {
+		sd := StalenessDelta
+		if s.Interval > StalenessDelta {
+			sd = s.Interval
+		}
 		switch n := node.(type) {
 		case *VectorSelector:
 			if s.Start.Equal(s.End) {
 				n.iterators, queryErr = querier.QueryInstant(
 					ctx,
 					s.Start.Add(-n.Offset),
-					StalenessDelta,
+					sd,
 					n.All,
 					n.LabelMatchers...,
 				)
@@ -576,7 +582,8 @@ func (ng *Engine) closeIterators(s *EvalStmt) {
 type evaluator struct {
 	ctx context.Context
 
-	Timestamp model.Time
+	Timestamp      model.Time
+	StalenessDelta time.Duration
 }
 
 // fatalf causes a panic with the input formatted into an error.
@@ -757,11 +764,15 @@ func (ev *evaluator) eval(expr Expr) model.Value {
 
 // vectorSelector evaluates a *VectorSelector expression.
 func (ev *evaluator) vectorSelector(node *VectorSelector) vector {
+	sd := StalenessDelta
+	if ev.StalenessDelta > StalenessDelta {
+		sd = ev.StalenessDelta
+	}
 	vec := vector{}
 	for _, it := range node.iterators {
 		refTime := ev.Timestamp.Add(-node.Offset)
 		samplePair := it.ValueAtOrBeforeTime(refTime)
-		if samplePair.Timestamp.Before(refTime.Add(-StalenessDelta)) {
+		if samplePair.Timestamp.Before(refTime.Add(-sd)) {
 			continue // Sample outside of staleness policy window.
 		}
 		vec = append(vec, &sample{

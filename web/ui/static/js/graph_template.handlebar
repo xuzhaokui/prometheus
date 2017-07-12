@@ -109,6 +109,12 @@
                       <div class="graph_area"></div>
                       <div class="legend"></div>
                     </div>
+
+                    <div class="prometheus_input_group pull-left">
+                      <input class="input" title="Staleness" placeholder="Staleness" type="text" name="sd_input" id="sd_input{{id}}" value="{{sd_input}}" size="7">
+                    </div>
+
+
                     <div role="tabpanel" class="tab-pane active console reload" id="console{{id}}">
                       <table class="table table-condensed table-hover console_table">
                         <thead>
