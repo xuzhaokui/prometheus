@@ -411,7 +411,7 @@ func funcCountScalar(ev *evaluator, args Expressions) model.Value {
 	}
 }
 
-func aggrOverTime(ev *evaluator, args Expressions, aggrFn func([]model.SamplePair) model.SampleValue) model.Value {
+func aggrOverTime(ev *evaluator, args Expressions, aggrFn func([]model.SamplePair) model.SampleValue, rate bool) model.Value {
 	mat := ev.evalMatrix(args[0])
 	resultVector := vector{}
 
@@ -421,9 +421,36 @@ func aggrOverTime(ev *evaluator, args Expressions, aggrFn func([]model.SamplePai
 		}
 
 		el.Metric.Del(model.MetricNameLabel)
+
+		resultValues := el.Values
+
+		if rate {
+			if len(resultValues) < 2 {
+				continue
+			}
+
+			for i := 0; i < len(resultValues)-1; i++ {
+				lastSample := resultValues[i+1]
+				previousSample := resultValues[i]
+				var resultValue model.SampleValue
+				if lastSample.Value < previousSample.Value {
+					resultValue = lastSample.Value
+				} else {
+					resultValue = lastSample.Value - previousSample.Value
+				}
+				sampledInterval := lastSample.Timestamp.Sub(previousSample.Timestamp)
+
+				if sampledInterval == 0 {
+					continue
+				}
+				resultValue /= model.SampleValue(sampledInterval.Seconds())
+				resultValues[i].Value = resultValue
+			}
+			resultValues = resultValues[:len(resultValues)-1]
+		}
 		resultVector = append(resultVector, &sample{
 			Metric:    el.Metric,
-			Value:     aggrFn(el.Values),
+			Value:     aggrFn(resultValues),
 			Timestamp: ev.Timestamp,
 		})
 	}
@@ -438,14 +465,32 @@ func funcAvgOverTime(ev *evaluator, args Expressions) model.Value {
 			sum += v.Value
 		}
 		return sum / model.SampleValue(len(values))
-	})
+	}, false)
+}
+
+// === avg_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcAvgRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		var sum model.SampleValue
+		for _, v := range values {
+			sum += v.Value
+		}
+		return sum / model.SampleValue(len(values))
+	}, true)
 }
 
 // === count_over_time(matrix model.ValMatrix) Vector ===
 func funcCountOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		return model.SampleValue(len(values))
-	})
+	}, false)
+}
+
+// === count_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcCountRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		return model.SampleValue(len(values))
+	}, true)
 }
 
 // === floor(vector model.ValVector) Vector ===
@@ -466,7 +511,18 @@ func funcMaxOverTime(ev *evaluator, args Expressions) model.Value {
 			max = math.Max(max, float64(v.Value))
 		}
 		return model.SampleValue(max)
-	})
+	}, false)
+}
+
+// === max_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcMaxRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		max := math.Inf(-1)
+		for _, v := range values {
+			max = math.Max(max, float64(v.Value))
+		}
+		return model.SampleValue(max)
+	}, true)
 }
 
 // === min_over_time(matrix model.ValMatrix) Vector ===
@@ -477,7 +533,18 @@ func funcMinOverTime(ev *evaluator, args Expressions) model.Value {
 			min = math.Min(min, float64(v.Value))
 		}
 		return model.SampleValue(min)
-	})
+	}, false)
+}
+
+// === min_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcMinRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		min := math.Inf(1)
+		for _, v := range values {
+			min = math.Min(min, float64(v.Value))
+		}
+		return model.SampleValue(min)
+	}, true)
 }
 
 // === sum_over_time(matrix model.ValMatrix) Vector ===
@@ -488,7 +555,18 @@ func funcSumOverTime(ev *evaluator, args Expressions) model.Value {
 			sum += v.Value
 		}
 		return sum
-	})
+	}, false)
+}
+
+// === sum_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcSumRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		var sum model.SampleValue
+		for _, v := range values {
+			sum += v.Value
+		}
+		return sum
+	}, true)
 }
 
 // === quantile_over_time(matrix model.ValMatrix) Vector ===
@@ -527,7 +605,21 @@ func funcStddevOverTime(ev *evaluator, args Expressions) model.Value {
 		}
 		avg := sum / count
 		return model.SampleValue(math.Sqrt(float64(squaredSum/count - avg*avg)))
-	})
+	}, false)
+}
+
+// === stddev_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcStddevRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		var sum, squaredSum, count model.SampleValue
+		for _, v := range values {
+			sum += v.Value
+			squaredSum += v.Value * v.Value
+			count++
+		}
+		avg := sum / count
+		return model.SampleValue(math.Sqrt(float64(squaredSum/count - avg*avg)))
+	}, true)
 }
 
 // === stdvar_over_time(matrix model.ValMatrix) Vector ===
@@ -541,7 +633,21 @@ func funcStdvarOverTime(ev *evaluator, args Expressions) model.Value {
 		}
 		avg := sum / count
 		return squaredSum/count - avg*avg
-	})
+	}, false)
+}
+
+// === stdvar_rate_over_time(matrix model.ValMatrix) Vector ===
+func funcStdvarRateOverTime(ev *evaluator, args Expressions) model.Value {
+	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
+		var sum, squaredSum, count model.SampleValue
+		for _, v := range values {
+			sum += v.Value
+			squaredSum += v.Value * v.Value
+			count++
+		}
+		avg := sum / count
+		return squaredSum/count - avg*avg
+	}, true)
 }
 
 // === abs(vector model.ValVector) Vector ===
@@ -949,6 +1055,12 @@ var functions = map[string]*Function{
 		ReturnType: model.ValVector,
 		Call:       funcAvgOverTime,
 	},
+	"avg_rate_over_time": {
+		Name:       "avg_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcAvgRateOverTime,
+	},
 	"ceil": {
 		Name:       "ceil",
 		ArgTypes:   []model.ValueType{model.ValVector},
@@ -978,6 +1090,12 @@ var functions = map[string]*Function{
 		ArgTypes:   []model.ValueType{model.ValMatrix},
 		ReturnType: model.ValVector,
 		Call:       funcCountOverTime,
+	},
+	"count_rate_over_time": {
+		Name:       "count_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcCountRateOverTime,
 	},
 	"count_scalar": {
 		Name:       "count_scalar",
@@ -1103,11 +1221,23 @@ var functions = map[string]*Function{
 		ReturnType: model.ValVector,
 		Call:       funcMaxOverTime,
 	},
+	"max_rate_over_time": {
+		Name:       "max_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcMaxRateOverTime,
+	},
 	"min_over_time": {
 		Name:       "min_over_time",
 		ArgTypes:   []model.ValueType{model.ValMatrix},
 		ReturnType: model.ValVector,
 		Call:       funcMinOverTime,
+	},
+	"min_rate_over_time": {
+		Name:       "min_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcMinRateOverTime,
 	},
 	"minute": {
 		Name:         "minute",
@@ -1184,17 +1314,35 @@ var functions = map[string]*Function{
 		ReturnType: model.ValVector,
 		Call:       funcStddevOverTime,
 	},
+	"stddev_rate_over_time": {
+		Name:       "stddev_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcStddevRateOverTime,
+	},
 	"stdvar_over_time": {
 		Name:       "stdvar_over_time",
 		ArgTypes:   []model.ValueType{model.ValMatrix},
 		ReturnType: model.ValVector,
 		Call:       funcStdvarOverTime,
 	},
+	"stdvar_rate_over_time": {
+		Name:       "stdvar_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcStdvarRateOverTime,
+	},
 	"sum_over_time": {
 		Name:       "sum_over_time",
 		ArgTypes:   []model.ValueType{model.ValMatrix},
 		ReturnType: model.ValVector,
 		Call:       funcSumOverTime,
+	},
+	"sum_rate_over_time": {
+		Name:       "sum_rate_over_time",
+		ArgTypes:   []model.ValueType{model.ValMatrix},
+		ReturnType: model.ValVector,
+		Call:       funcSumRateOverTime,
 	},
 	"time": {
 		Name:       "time",
