@@ -434,13 +434,16 @@ func aggrOverTime(ev *evaluator, args Expressions, aggrFn func([]model.SamplePai
 				previousSample := resultValues[i]
 				var resultValue model.SampleValue
 				if lastSample.Value < previousSample.Value {
-					resultValue = lastSample.Value
+					//resultValue = lastSample.Value
+					resultValues[i].Value = model.SampleValue(math.NaN())
+					continue
 				} else {
 					resultValue = lastSample.Value - previousSample.Value
 				}
 				sampledInterval := lastSample.Timestamp.Sub(previousSample.Timestamp)
 
 				if sampledInterval == 0 {
+					resultValues[i].Value = model.SampleValue(math.NaN())
 					continue
 				}
 				resultValue /= model.SampleValue(sampledInterval.Seconds())
@@ -462,6 +465,9 @@ func funcAvgOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 		}
 		return sum / model.SampleValue(len(values))
@@ -473,6 +479,9 @@ func funcAvgRateOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 		}
 		return sum / model.SampleValue(len(values))
@@ -508,6 +517,9 @@ func funcMaxOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		max := math.Inf(-1)
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			max = math.Max(max, float64(v.Value))
 		}
 		return model.SampleValue(max)
@@ -519,6 +531,9 @@ func funcMaxRateOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		max := math.Inf(-1)
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			max = math.Max(max, float64(v.Value))
 		}
 		return model.SampleValue(max)
@@ -530,6 +545,9 @@ func funcMinOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		min := math.Inf(1)
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			min = math.Min(min, float64(v.Value))
 		}
 		return model.SampleValue(min)
@@ -541,6 +559,9 @@ func funcMinRateOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		min := math.Inf(1)
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			min = math.Min(min, float64(v.Value))
 		}
 		return model.SampleValue(min)
@@ -552,6 +573,9 @@ func funcSumOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 		}
 		return sum
@@ -563,6 +587,9 @@ func funcSumRateOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 		}
 		return sum
@@ -599,6 +626,9 @@ func funcStddevOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum, squaredSum, count model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 			squaredSum += v.Value * v.Value
 			count++
@@ -613,6 +643,9 @@ func funcStddevRateOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum, squaredSum, count model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 			squaredSum += v.Value * v.Value
 			count++
@@ -627,6 +660,9 @@ func funcStdvarOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum, squaredSum, count model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 			squaredSum += v.Value * v.Value
 			count++
@@ -641,6 +677,9 @@ func funcStdvarRateOverTime(ev *evaluator, args Expressions) model.Value {
 	return aggrOverTime(ev, args, func(values []model.SamplePair) model.SampleValue {
 		var sum, squaredSum, count model.SampleValue
 		for _, v := range values {
+			if math.IsNaN(float64(v.Value)) {
+				continue
+			}
 			sum += v.Value
 			squaredSum += v.Value * v.Value
 			count++
