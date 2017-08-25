@@ -689,7 +689,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	}
 	candidateFPs := map[model.Fingerprint]struct{}{}
 	for k, v := range merged {
-		candidateFPs[s.mapper.dirtyMapping(v, k)] = struct{}{}
+		candidateFPs[s.mapper.mappingRealFastfp(v, k)] = struct{}{}
 	}
 	return candidateFPs, nil
 }

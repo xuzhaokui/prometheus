@@ -143,8 +143,11 @@ func (m *fpMapper) mapFP(fp model.Fingerprint, metric model.Metric) model.Finger
 	return m.maybeAddMapping(fp, metric)
 }
 
-func (m *fpMapper) dirtyMapping(fastfp, fp model.Fingerprint) model.Fingerprint {
-	if mappedFPs, ok := m.mappings[fastfp]; ok {
+func (m *fpMapper) mappingRealFastfp(fastfp, fp model.Fingerprint) model.Fingerprint {
+	m.mtx.RLock()
+	mappedFPs, ok := m.mappings[fastfp]
+	m.mtx.RUnlock()
+	if ok {
 		for _, v := range mappedFPs {
 			if s, ok := m.fpToSeries.get(v); ok && s.metric.Fingerprint() == fp {
 				return v
