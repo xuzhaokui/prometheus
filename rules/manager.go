@@ -39,6 +39,8 @@ import (
 // Constants for instrumentation.
 const namespace = "prometheus"
 
+const ModuleName = "rules"
+
 var (
 	evalDuration = prometheus.NewSummaryVec(
 		prometheus.SummaryOpts{
@@ -383,6 +385,9 @@ func (m *Manager) Stop() {
 // ApplyConfig updates the rule manager's state as the config requires. If
 // loading the new rules failed the old rule set is restored.
 func (m *Manager) ApplyConfig(conf *config.Config) error {
+	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

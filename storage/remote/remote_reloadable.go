@@ -38,6 +38,9 @@ func NewConfigurable() *ReloadableStorage {
 
 // ApplyConfig updates the state as the new config requires.
 func (s *ReloadableStorage) ApplyConfig(conf *config.Config) error {
+	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 

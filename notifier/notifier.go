@@ -38,6 +38,8 @@ import (
 	"github.com/prometheus/prometheus/retrieval"
 )
 
+const ModuleName = "notifier"
+
 const (
 	alertPushEndpoint = "/api/v1/alerts"
 	contentTypeJSON   = "application/json"
@@ -140,6 +142,9 @@ func New(o *Options) *Notifier {
 
 // ApplyConfig updates the status state as the new config requires.
 func (n *Notifier) ApplyConfig(conf *config.Config) error {
+	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 

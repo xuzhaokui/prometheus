@@ -51,6 +51,8 @@ import (
 	"github.com/prometheus/prometheus/web/ui"
 )
 
+const ModuleName = "web"
+
 var localhostRepresentations = []string{"127.0.0.1", "localhost"}
 
 // Handler serves various HTTP endpoints of the Prometheus server
@@ -82,6 +84,9 @@ type Handler struct {
 
 // ApplyConfig updates the status state as the new config requires.
 func (h *Handler) ApplyConfig(conf *config.Config) error {
+	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	h.mtx.Lock()
 	defer h.mtx.Unlock()
 

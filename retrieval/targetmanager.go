@@ -24,6 +24,8 @@ import (
 	"github.com/prometheus/prometheus/storage"
 )
 
+const ModuleName = "retrieval"
+
 // TargetManager maintains a set of targets, starts and stops their scraping and
 // creates the new targets based on the target groups it receives from various
 // target providers.
@@ -153,6 +155,9 @@ func (tm *TargetManager) Targets() []*Target {
 // ApplyConfig resets the manager's target providers and job configurations as defined
 // by the new cfg. The state of targets that are valid in the new configuration remains unchanged.
 func (tm *TargetManager) ApplyConfig(cfg *config.Config) error {
+	if !cfg.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	tm.mtx.Lock()
 	defer tm.mtx.Unlock()
 

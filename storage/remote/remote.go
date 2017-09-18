@@ -30,6 +30,8 @@ import (
 	"github.com/prometheus/prometheus/storage/remote/opentsdb"
 )
 
+const ModuleName = "remote"
+
 // Storage collects multiple remote storage queues.
 type Storage struct {
 	queues         []*StorageQueueManager
@@ -40,6 +42,9 @@ type Storage struct {
 
 // ApplyConfig updates the status state as the new config requires.
 func (s *Storage) ApplyConfig(conf *config.Config) error {
+	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
