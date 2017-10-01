@@ -72,6 +72,8 @@ type Notifier struct {
 
 	alertmanagers   []*alertmanagerSet
 	cancelDiscovery func()
+
+	reloadCount int64
 }
 
 // Options are the configurable parameters of a Handler.
@@ -142,7 +144,8 @@ func New(o *Options) *Notifier {
 
 // ApplyConfig updates the status state as the new config requires.
 func (n *Notifier) ApplyConfig(conf *config.Config) error {
-	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+	if atomic.AddInt64(&n.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
 		return nil
 	}
 	n.mtx.Lock()

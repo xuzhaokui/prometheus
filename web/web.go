@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pprof_runtime "runtime/pprof"
@@ -80,11 +81,13 @@ type Handler struct {
 	externalLabels model.LabelSet
 	mtx            sync.RWMutex
 	now            func() model.Time
+	reloadCount    int64
 }
 
 // ApplyConfig updates the status state as the new config requires.
 func (h *Handler) ApplyConfig(conf *config.Config) error {
-	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+	if atomic.AddInt64(&h.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
 		return nil
 	}
 	h.mtx.Lock()

@@ -16,6 +16,7 @@ package remote
 import (
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,11 +39,13 @@ type Storage struct {
 	externalLabels model.LabelSet
 	relabelConfigs []*config.RelabelConfig
 	mtx            sync.RWMutex
+	reloadCount    int64
 }
 
 // ApplyConfig updates the status state as the new config requires.
 func (s *Storage) ApplyConfig(conf *config.Config) error {
-	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+	if atomic.AddInt64(&s.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
 		return nil
 	}
 	s.mtx.Lock()
