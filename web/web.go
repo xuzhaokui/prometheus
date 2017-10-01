@@ -27,6 +27,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pprof_runtime "runtime/pprof"
@@ -80,11 +81,13 @@ type Handler struct {
 	externalLabels model.LabelSet
 	mtx            sync.RWMutex
 	now            func() model.Time
+	reloadCount    int64
 }
 
 // ApplyConfig updates the status state as the new config requires.
 func (h *Handler) ApplyConfig(conf *config.Config) error {
-	if !conf.GlobalConfig.NeedsReloading(ModuleName) {
+	if atomic.AddInt64(&h.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
 		return nil
 	}
 	h.mtx.Lock()
@@ -179,6 +182,7 @@ func New(o *Options) *Handler {
 		router.Redirect(w, r, "/graph", http.StatusFound)
 	})
 
+	router.Get("/v1/alerts.json", instrf("alerts", h.jsonAlerts))
 	router.Get("/alerts", instrf("alerts", h.alerts))
 	router.Get("/alerts.json", instrf("alerts", h.alerts_json))
 	router.Get("/graph", instrf("graph", h.graph))
@@ -292,6 +296,45 @@ func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 	h.executeTemplate(w, "alerts.html", alertStatus)
+}
+
+func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
+	type alert struct {
+		Name   string            `json:"name"`
+		Metric map[string]string `json:"metric"`
+		Value  float64           `json:"value"`
+		Status int               `json:"status"`
+	}
+	ret := map[string][]*alert{}
+	rules := h.ruleManager.AlertingRules()
+	for _, x := range rules {
+		alts, ok := ret[x.Name()]
+		if !ok {
+			alts = []*alert{}
+			ret[x.Name()] = alts
+		}
+		for _, y := range x.ActiveAlerts() {
+			r := &alert{
+				Name:   x.Name(),
+				Metric: map[string]string{},
+				Value:  float64(y.Value),
+				Status: int(y.State),
+			}
+			for k, v := range y.Labels {
+				r.Metric[string(k)] = string(v)
+			}
+			alts = append(alts, r)
+		}
+		ret[x.Name()] = alts
+	}
+	b, err := json.Marshal(ret)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write(b)
 }
 
 func (h *Handler) alerts_json(w http.ResponseWriter, r *http.Request) {

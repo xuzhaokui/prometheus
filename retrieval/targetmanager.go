@@ -15,6 +15,7 @@ package retrieval
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/common/log"
 	"golang.org/x/net/context"
@@ -40,6 +41,8 @@ type TargetManager struct {
 
 	// Set of unqiue targets by scrape configuration.
 	targetSets map[string]*targetSet
+
+	reloadCount int64
 }
 
 type targetSet struct {
@@ -155,7 +158,8 @@ func (tm *TargetManager) Targets() []*Target {
 // ApplyConfig resets the manager's target providers and job configurations as defined
 // by the new cfg. The state of targets that are valid in the new configuration remains unchanged.
 func (tm *TargetManager) ApplyConfig(cfg *config.Config) error {
-	if !cfg.GlobalConfig.NeedsReloading(ModuleName) {
+	if atomic.AddInt64(&tm.reloadCount, 1) > 1 &&
+		!cfg.GlobalConfig.NeedsReloading(ModuleName) {
 		return nil
 	}
 	tm.mtx.Lock()
