@@ -305,12 +305,18 @@ func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 		Value  float64           `json:"value"`
 		Status int               `json:"status"`
 	}
-	ret := map[string][]*alert{}
+	type alertsPerRule struct {
+		Rule   *rules.ALertingRuleDesc `json:"rule"`
+		Alerts []*alert                `json:"alerts"`
+	}
+	ret := map[string]alertsPerRule{}
 	rules := h.ruleManager.AlertingRules()
 	for _, x := range rules {
 		alts, ok := ret[x.Name()]
 		if !ok {
-			alts = []*alert{}
+			alts = alertsPerRule{
+				Rule: x.Desc(),
+			}
 			ret[x.Name()] = alts
 		}
 		for _, y := range x.ActiveAlerts() {
@@ -323,7 +329,7 @@ func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 			for k, v := range y.Labels {
 				r.Metric[string(k)] = string(v)
 			}
-			alts = append(alts, r)
+			alts.Alerts = append(alts.Alerts, r)
 		}
 		ret[x.Name()] = alts
 	}
