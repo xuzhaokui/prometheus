@@ -111,6 +111,14 @@ func NewAlertingRule(name string, vec promql.Expr, hold time.Duration, lbls, ann
 	}
 }
 
+type ALertingRuleDesc struct {
+	Expr string `json:"expr"`
+}
+
+func (r *AlertingRule) Desc() *ALertingRuleDesc {
+	return &ALertingRuleDesc{r.vector.String()}
+}
+
 // Name returns the name of the alert.
 func (r *AlertingRule) Name() string {
 	return r.name
