@@ -141,7 +141,9 @@ func (m *LabelMatcher) calculateScore() {
 	switch m.Type {
 	case Equal:
 		m.score = 0.3 - lengthCorrection
-	case RegexMatch, ListMatch:
+	case ListMatch:
+		m.score = 0.45 - lengthCorrection
+	case RegexMatch:
 		m.score = 0.6 - lengthCorrection
 	case RegexNoMatch, ListNoMatch:
 		m.score = 0.8 + lengthCorrection
