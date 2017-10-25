@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	html_template "html/template"
@@ -38,6 +39,8 @@ import (
 
 // Constants for instrumentation.
 const namespace = "prometheus"
+
+const ModuleName = "rules"
 
 var (
 	evalDuration = prometheus.NewSummaryVec(
@@ -339,6 +342,8 @@ type Manager struct {
 	groups map[string]*Group
 	mtx    sync.RWMutex
 	block  chan struct{}
+
+	reloadCount int64
 }
 
 // ManagerOptions bundles options for the Manager.
@@ -383,6 +388,10 @@ func (m *Manager) Stop() {
 // ApplyConfig updates the rule manager's state as the config requires. If
 // loading the new rules failed the old rule set is restored.
 func (m *Manager) ApplyConfig(conf *config.Config) error {
+	if atomic.AddInt64(&m.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 

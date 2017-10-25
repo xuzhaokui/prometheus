@@ -15,6 +15,7 @@ package remote
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/prometheus/common/model"
 
@@ -28,7 +29,8 @@ type ReloadableStorage struct {
 	externalLabels model.LabelSet
 	conf           config.RemoteWriteConfig
 
-	queue *StorageQueueManager
+	queue       *StorageQueueManager
+	reloadCount int64
 }
 
 // New returns a new remote Storage.
@@ -38,6 +40,10 @@ func NewConfigurable() *ReloadableStorage {
 
 // ApplyConfig updates the state as the new config requires.
 func (s *ReloadableStorage) ApplyConfig(conf *config.Config) error {
+	if atomic.AddInt64(&s.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 

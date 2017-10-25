@@ -38,6 +38,8 @@ import (
 	"github.com/prometheus/prometheus/retrieval"
 )
 
+const ModuleName = "notifier"
+
 const (
 	alertPushEndpoint = "/api/v1/alerts"
 	contentTypeJSON   = "application/json"
@@ -70,6 +72,8 @@ type Notifier struct {
 
 	alertmanagers   []*alertmanagerSet
 	cancelDiscovery func()
+
+	reloadCount int64
 }
 
 // Options are the configurable parameters of a Handler.
@@ -140,6 +144,10 @@ func New(o *Options) *Notifier {
 
 // ApplyConfig updates the status state as the new config requires.
 func (n *Notifier) ApplyConfig(conf *config.Config) error {
+	if atomic.AddInt64(&n.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 

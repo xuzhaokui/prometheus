@@ -344,9 +344,21 @@ type GlobalConfig struct {
 	EvaluationInterval model.Duration `yaml:"evaluation_interval,omitempty"`
 	// The labels to add to any timeseries that this Prometheus instance scrapes.
 	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
+	// The components to ApplyConfig, including: "all", "retrieval", "rules", "web", "notifier", "remote"
+	ReloadModules []string `yaml:"reload_modules,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`
+}
+
+// NeedReload check if a module needs to reload when got Reload Action.
+func (c *GlobalConfig) NeedsReloading(mod string) bool {
+	for _, rm := range c.ReloadModules {
+		if rm == "all" || rm == mod {
+			return true
+		}
+	}
+	return false
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.

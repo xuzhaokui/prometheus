@@ -16,6 +16,7 @@ package remote
 import (
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,16 +31,23 @@ import (
 	"github.com/prometheus/prometheus/storage/remote/opentsdb"
 )
 
+const ModuleName = "remote"
+
 // Storage collects multiple remote storage queues.
 type Storage struct {
 	queues         []*StorageQueueManager
 	externalLabels model.LabelSet
 	relabelConfigs []*config.RelabelConfig
 	mtx            sync.RWMutex
+	reloadCount    int64
 }
 
 // ApplyConfig updates the status state as the new config requires.
 func (s *Storage) ApplyConfig(conf *config.Config) error {
+	if atomic.AddInt64(&s.reloadCount, 1) > 1 &&
+		!conf.GlobalConfig.NeedsReloading(ModuleName) {
+		return nil
+	}
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
