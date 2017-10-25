@@ -139,8 +139,10 @@ func (m *LabelMatcher) calculateScore() {
 	// lengthCorrection is between 0 (for length 0) and 0.1 (for length +Inf).
 	lengthCorrection := 0.1 * (1 - 1/float64(len(m.Name)+len(m.Value)+1))
 	switch m.Type {
-	case Equal, ListMatch:
+	case Equal:
 		m.score = 0.3 - lengthCorrection
+	case ListMatch:
+		m.score = 0.45 - lengthCorrection
 	case RegexMatch:
 		m.score = 0.6 - lengthCorrection
 	case RegexNoMatch, ListNoMatch:
