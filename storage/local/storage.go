@@ -635,27 +635,29 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 
 	var err error
 
-	sort.Sort(labelMatchersByName(matchers))
+	sort.Stable(labelMatchersByName(matchers))
 
 	merged := map[model.Fingerprint]model.Fingerprint{
 		model.Fingerprint(hashNew()): model.Fingerprint(0),
 	}
 
+	var values model.LabelValues
+	var lastName model.LabelName = ""
 	for _, x := range matchers {
-
-		values := model.LabelValues{}
 		switch x.Type {
 		case metric.Equal:
 			values = append(values, x.Value)
 		case metric.ListMatch:
 			values = append(values, x.Values...)
 		case metric.NotEqual, metric.RegexMatch, metric.RegexNoMatch, metric.ListNoMatch:
-			values, err = s.LabelValuesForLabelName(context.TODO(), x.Name)
-			if err != nil {
-				return nil, err
-			}
-			if x.MatchesEmptyString() {
-				values = append(values, "")
+			if values == nil {
+				values, err = s.LabelValuesForLabelName(context.TODO(), x.Name)
+				if err != nil {
+					return nil, err
+				}
+				if x.MatchesEmptyString() {
+					values = append(values, "")
+				}
 			}
 			values = x.Filter(values)
 		}
@@ -663,6 +665,11 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 		if len(values) == 0 {
 			return nil, nil
 		}
+
+		if lastName == x.Name {
+			continue
+		}
+		lastName = x.Name
 
 		new := map[model.Fingerprint]model.Fingerprint{}
 		for fp, fastfp := range merged {
@@ -686,6 +693,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 			}
 		}
 		merged = new
+		values = nil
 	}
 	candidateFPs := map[model.Fingerprint]struct{}{}
 	for k, v := range merged {
