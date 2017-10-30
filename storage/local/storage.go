@@ -642,8 +642,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	}
 
 	var values model.LabelValues
-	var lastName model.LabelName = ""
-	for _, x := range matchers {
+	for i, x := range matchers {
 		switch x.Type {
 		case metric.Equal:
 			values = append(values, x.Value)
@@ -666,10 +665,9 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 			return nil, nil
 		}
 
-		if lastName == x.Name {
+		if i+1 < len(matchers) && matchers[i+1].Name == x.Name {
 			continue
 		}
-		lastName = x.Name
 
 		new := map[model.Fingerprint]model.Fingerprint{}
 		for fp, fastfp := range merged {
