@@ -632,6 +632,7 @@ func hashAddByte(h uint64, b byte) uint64 {
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	matchers ...*metric.LabelMatcher,
 ) (map[model.Fingerprint]struct{}, error) {
+	sort.Sort(metric.LabelMatchers(matchers))
 
 	var err error
 
