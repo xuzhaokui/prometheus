@@ -635,7 +635,8 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 
 	var err error
 
-	sort.Stable(labelMatchersByName(matchers))
+	// 不排序，则要求查询时相同tag必须相邻
+	// sort.Stable(labelMatchersByName(matchers))
 
 	merged := map[model.Fingerprint]model.Fingerprint{
 		model.Fingerprint(hashNew()): model.Fingerprint(0),
