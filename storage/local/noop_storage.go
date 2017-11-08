@@ -16,6 +16,8 @@ package local
 import (
 	"time"
 
+	"github.com/prometheus/prometheus/config"
+
 	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
@@ -25,6 +27,10 @@ import (
 // NoopStorage is a dummy storage for use when Prometheus's local storage is
 // disabled. It throws away any appended samples and returns empty results.
 type NoopStorage struct{}
+
+func (s *NoopStorage) ApplyConfig(cfg *config.Config) error {
+	return nil
+}
 
 // Start implements Storage.
 func (s *NoopStorage) Start() (err error) {

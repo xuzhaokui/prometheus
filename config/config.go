@@ -73,9 +73,11 @@ var (
 
 	// DefaultGlobalConfig is the default global configuration.
 	DefaultGlobalConfig = GlobalConfig{
-		ScrapeInterval:     model.Duration(1 * time.Minute),
-		ScrapeTimeout:      model.Duration(10 * time.Second),
-		EvaluationInterval: model.Duration(1 * time.Minute),
+		ScrapeInterval:        model.Duration(1 * time.Minute),
+		ScrapeTimeout:         model.Duration(10 * time.Second),
+		EvaluationInterval:    model.Duration(1 * time.Minute),
+		MatchAllMaxNum:        500000,
+		TryStopSearchIndexNum: 100000,
 	}
 
 	// DefaultScrapeConfig is the default scrape configuration.
@@ -346,6 +348,9 @@ type GlobalConfig struct {
 	ExternalLabels model.LabelSet `yaml:"external_labels,omitempty"`
 	// The components to ApplyConfig, including: "all", "retrieval", "rules", "web", "notifier", "remote"
 	ReloadModules []string `yaml:"reload_modules,omitempty"`
+
+	MatchAllMaxNum        int `yaml:"match_all_max_num,omitempty"`
+	TryStopSearchIndexNum int `yaml:"try_stop_search_index_num,omitempty"`
 
 	// Catches all undefined fields and must be empty after parsing.
 	XXX map[string]interface{} `yaml:",inline"`

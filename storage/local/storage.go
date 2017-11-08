@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/prometheus/config"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/model"
@@ -205,6 +207,9 @@ type MemorySeriesStorageOptions struct {
 	SyncStrategy               SyncStrategy  // Which sync strategy to apply to series files.
 	MinShrinkRatio             float64       // Minimum ratio a series file has to shrink during truncation.
 	NumMutexes                 int           // Number of mutexes used for stochastic fingerprint locking.
+
+	MatchAllMaxNum        int
+	TryStopSearchIndexNum int
 }
 
 // NewMemorySeriesStorage returns a newly allocated Storage. Storage.Serve still
@@ -332,6 +337,16 @@ func NewMemorySeriesStorage(o *MemorySeriesStorageOptions) *MemorySeriesStorage 
 	s.seriesOps.WithLabelValues(failedQuarantine)
 
 	return s
+}
+
+func (s *MemorySeriesStorage) ApplyConfig(cfg *config.Config) error {
+	if s.options.MatchAllMaxNum = cfg.GlobalConfig.MatchAllMaxNum; s.options.MatchAllMaxNum <= 0 {
+		s.options.MatchAllMaxNum = config.DefaultGlobalConfig.MatchAllMaxNum
+	}
+	if s.options.TryStopSearchIndexNum = cfg.GlobalConfig.TryStopSearchIndexNum; s.options.TryStopSearchIndexNum <= 0 {
+		s.options.TryStopSearchIndexNum = config.DefaultGlobalConfig.TryStopSearchIndexNum
+	}
+	return nil
 }
 
 // Start implements Storage.
@@ -631,8 +646,7 @@ func hashAddByte(h uint64, b byte) uint64 {
 
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	matchers ...*metric.LabelMatcher,
-) (map[model.Fingerprint]struct{}, error) {
-	sort.Sort(metric.LabelMatchers(matchers))
+) (map[model.Fingerprint]struct{}, []*metric.LabelMatcher, error) {
 
 	var err error
 
@@ -654,7 +668,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 			if values == nil {
 				values, err = s.LabelValuesForLabelName(context.TODO(), x.Name)
 				if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if x.MatchesEmptyString() {
 					values = append(values, "")
@@ -664,7 +678,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 		}
 
 		if len(values) == 0 {
-			return nil, nil
+			return nil, nil, nil
 		}
 
 		if i+1 < len(matchers) && matchers[i+1].Name == x.Name {
@@ -672,6 +686,11 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 		}
 
 		new := map[model.Fingerprint]model.Fingerprint{}
+
+		if len(merged)*len(values) >= s.options.MatchAllMaxNum {
+			return s.candidateFPsForLabelMatchers(matchers...)
+		}
+
 		for fp, fastfp := range merged {
 			for _, v := range values {
 				if v == "" {
@@ -699,14 +718,14 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	for k, v := range merged {
 		candidateFPs[s.mapper.mappingRealFastfp(v, k)] = struct{}{}
 	}
-	return candidateFPs, nil
+	return candidateFPs, nil, nil
 }
 
 // candidateFPsForLabelMatchers returns candidate FPs for given matchers and remaining matchers to be checked.
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 	matchers ...*metric.LabelMatcher,
 ) (map[model.Fingerprint]struct{}, []*metric.LabelMatcher, error) {
-	sort.Sort(metric.LabelMatchers(matchers))
+	sort.Stable(metric.LabelMatchers(matchers))
 
 	if len(matchers) == 0 || matchers[0].MatchesEmptyString() {
 		// No matchers at all or even the best matcher matches the empty string.
@@ -722,6 +741,9 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 	for ; matcherIdx < len(matchers) && (candidateFPs == nil || len(candidateFPs) > fpEqualMatchThreshold); matcherIdx++ {
 		m := matchers[matcherIdx]
 		if m.Type != metric.Equal || m.MatchesEmptyString() {
+			break
+		}
+		if m.Tunning.Match("try_stop_search_index") || m.Tunning.Match("must_stop_search_index") {
 			break
 		}
 		candidateFPs = s.fingerprintsForLabelPair(
@@ -743,12 +765,22 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 		if m.MatchesEmptyString() {
 			break
 		}
-
-		lvs, err := s.LabelValuesForLabelName(context.TODO(), m.Name)
-		if err != nil {
-			return nil, nil, err
+		if m.Tunning.Match("try_stop_search_index") || m.Tunning.Match("must_stop_search_index") {
+			break
 		}
-		lvs = m.Filter(lvs)
+
+		var lvs model.LabelValues
+		if m.Type == metric.ListMatch {
+			lvs = m.Values
+		} else {
+			var err error
+			lvs, err = s.LabelValuesForLabelName(context.TODO(), m.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+			lvs = m.Filter(lvs)
+		}
+
 		if len(lvs) == 0 {
 			return nil, nil, nil
 		}
@@ -768,6 +800,52 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 			return nil, nil, nil
 		}
 	}
+
+	// Try stop search index
+	for ; matcherIdx < len(matchers) && (candidateFPs == nil || len(candidateFPs) > s.options.TryStopSearchIndexNum); matcherIdx++ {
+		m := matchers[matcherIdx]
+		if m.MatchesEmptyString() {
+			break
+		}
+		if !m.Tunning.Match("try_stop_search_index") {
+			break
+		}
+
+		var lvs model.LabelValues
+		if m.Type == metric.Equal {
+			lvs = model.LabelValues{m.Value}
+		} else if m.Type == metric.ListMatch {
+			lvs = m.Values
+		} else {
+			var err error
+			lvs, err = s.LabelValuesForLabelName(context.TODO(), m.Name)
+			if err != nil {
+				return nil, nil, err
+			}
+			lvs = m.Filter(lvs)
+		}
+
+		if len(lvs) == 0 {
+			return nil, nil, nil
+		}
+		fps := map[model.Fingerprint]struct{}{}
+		for _, lv := range lvs {
+			s.fingerprintsForLabelPair(
+				model.LabelPair{
+					Name:  m.Name,
+					Value: lv,
+				},
+				fps,
+				candidateFPs,
+			)
+		}
+		candidateFPs = fps
+		log.Info("try stop search index:", m.Name, " ", len(lvs), len(candidateFPs), s.options.TryStopSearchIndexNum)
+		if len(candidateFPs) == 0 {
+			return nil, nil, nil
+		}
+	}
+
 	return candidateFPs, matchers[matcherIdx:], nil
 }
 
@@ -780,7 +858,7 @@ func (s *MemorySeriesStorage) seriesForLabelMatchers(
 	var matchersToCheck []*metric.LabelMatcher
 	var err error
 	if all {
-		candidateFPs, err = s.candidateFPsForLabelMatchersAll(matchers...)
+		candidateFPs, matchersToCheck, err = s.candidateFPsForLabelMatchersAll(matchers...)
 	} else {
 		candidateFPs, matchersToCheck, err = s.candidateFPsForLabelMatchers(matchers...)
 	}
