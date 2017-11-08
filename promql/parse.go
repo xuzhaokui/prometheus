@@ -835,6 +835,7 @@ func (p *parser) labelMatchers(operators ...itemType) (metric.LabelMatchers, boo
 		return matchers, all
 	}
 
+	var tunning *metric.LabelMatcher
 	for {
 		label := p.expect(itemIdentifier, ctx)
 
@@ -877,12 +878,21 @@ func (p *parser) labelMatchers(operators ...itemType) (metric.LabelMatchers, boo
 			matchType,
 			model.LabelName(label.val),
 			model.LabelValue(val),
+			tunning,
 		)
 		if err != nil {
 			p.error(err)
 		}
 
-		matchers = append(matchers, m)
+		if m.Name == "__tunning__" {
+			if m.Match("-") {
+				tunning = nil
+			} else {
+				tunning = m
+			}
+		} else {
+			matchers = append(matchers, m)
+		}
 
 		if p.peek().typ == itemIdentifier {
 			p.errorf("missing comma before next identifier %q", p.peek().val)
@@ -969,7 +979,7 @@ func (p *parser) vectorSelector(name string) *VectorSelector {
 			}
 		}
 		// Set name label matching.
-		m, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, model.LabelValue(name))
+		m, err := metric.NewLabelMatcher(metric.Equal, model.MetricNameLabel, model.LabelValue(name), nil)
 		if err != nil {
 			panic(err) // Must not happen with metric.Equal.
 		}

@@ -61,21 +61,23 @@ func (lms LabelMatchers) Less(i, j int) bool { return lms[i].score < lms[j].scor
 
 // LabelMatcher models the matching of a label. Create with NewLabelMatcher.
 type LabelMatcher struct {
-	Type   MatchType
-	Name   model.LabelName
-	Value  model.LabelValue
-	Values model.LabelValues
-	re     *regexp.Regexp
-	lst    map[string]struct{}
-	score  float64 // Cardinality score, between 0 and 1, 0 is lowest cardinality.
+	Type    MatchType
+	Name    model.LabelName
+	Value   model.LabelValue
+	Values  model.LabelValues
+	Tunning *LabelMatcher
+	re      *regexp.Regexp
+	lst     map[string]struct{}
+	score   float64 // Cardinality score, between 0 and 1, 0 is lowest cardinality.
 }
 
 // NewLabelMatcher returns a LabelMatcher object ready to use.
-func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.LabelValue) (*LabelMatcher, error) {
+func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.LabelValue, tunning *LabelMatcher) (*LabelMatcher, error) {
 	m := &LabelMatcher{
-		Type:  matchType,
-		Name:  name,
-		Value: value,
+		Type:    matchType,
+		Name:    name,
+		Value:   value,
+		Tunning: tunning,
 	}
 	if matchType == RegexMatch || matchType == RegexNoMatch {
 		re, err := regexp.Compile("^(?:" + string(value) + ")$")
@@ -133,7 +135,15 @@ func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.Labe
 // POWERFUL INDEXING.
 func (m *LabelMatcher) calculateScore() {
 	if m.Match("") {
-		m.score = 1
+		m.score = 42
+		return
+	}
+	if m.Tunning != nil && m.Tunning.Match("must_stop_search_index") {
+		m.score = 41
+		return
+	}
+	if m.Tunning != nil && m.Tunning.Match("try_stop_search_index") {
+		m.score = 40
 		return
 	}
 	// lengthCorrection is between 0 (for length 0) and 0.1 (for length +Inf).
@@ -185,15 +195,25 @@ func (m *LabelMatcher) calculateScore() {
 
 // MatchesEmptyString returns true if the LabelMatcher matches the empty string.
 func (m *LabelMatcher) MatchesEmptyString() bool {
-	return m.score >= 1
+	return m.score >= 42
 }
 
 func (m *LabelMatcher) String() string {
+	if m.Type == ListMatch || m.Type == ListNoMatch {
+		l := []string{}
+		for _, x := range m.Values {
+			l = append(l, string(x))
+		}
+		return fmt.Sprintf("%s%s%q", m.Name, m.Type, strings.Join(l, ","))
+	}
 	return fmt.Sprintf("%s%s%q", m.Name, m.Type, m.Value)
 }
 
 // Match returns true if the label matcher matches the supplied label value.
 func (m *LabelMatcher) Match(v model.LabelValue) bool {
+	if m == nil {
+		return false
+	}
 	switch m.Type {
 	case Equal:
 		return m.Value == v

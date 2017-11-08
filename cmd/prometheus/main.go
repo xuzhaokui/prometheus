@@ -144,7 +144,7 @@ func Main() int {
 
 	webHandler := web.New(&cfg.web)
 
-	reloadables = append(reloadables, targetManager, ruleManager, webHandler, notifier)
+	reloadables = append(reloadables, targetManager, ruleManager, webHandler, notifier, localStorage)
 
 	if err := reloadConfig(cfg.configFile, reloadables...); err != nil {
 		log.Errorf("Error loading config: %s", err)

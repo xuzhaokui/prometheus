@@ -16,6 +16,8 @@ package local
 import (
 	"time"
 
+	"github.com/prometheus/prometheus/config"
+
 	"github.com/prometheus/common/model"
 	"golang.org/x/net/context"
 
@@ -54,6 +56,8 @@ type Storage interface {
 	// indexed. Indexing is needed for FingerprintsForLabelMatchers and
 	// LabelValuesForLabelName and may lag behind.
 	WaitForIndexing()
+
+	ApplyConfig(*config.Config) error
 }
 
 // Querier allows querying a time series storage.
