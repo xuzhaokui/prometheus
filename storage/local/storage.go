@@ -725,7 +725,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 	matchers ...*metric.LabelMatcher,
 ) (map[model.Fingerprint]struct{}, []*metric.LabelMatcher, error) {
-	sort.Stable(metric.LabelMatchers(matchers))
+	sort.Stable(metric.LabelMatchers(matchers).Tunning())
 
 	if len(matchers) == 0 || matchers[0].MatchesEmptyString() {
 		// No matchers at all or even the best matcher matches the empty string.

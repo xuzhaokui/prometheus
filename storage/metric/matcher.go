@@ -59,6 +59,22 @@ func (lms LabelMatchers) Len() int           { return len(lms) }
 func (lms LabelMatchers) Swap(i, j int)      { lms[i], lms[j] = lms[j], lms[i] }
 func (lms LabelMatchers) Less(i, j int) bool { return lms[i].score < lms[j].score }
 
+func (lms LabelMatchers) Tunning() (ret LabelMatchers) {
+	var tunning *LabelMatcher
+	for _, x := range lms {
+		if x.Name == "__tunning__" {
+			if x.Match("-") {
+				tunning = nil
+			} else {
+				tunning = x
+			}
+		} else if m, err := newLabelMatcherWithTunning(x.Type, x.Name, x.Value, tunning); err == nil {
+			ret = append(ret, m)
+		}
+	}
+	return
+}
+
 // LabelMatcher models the matching of a label. Create with NewLabelMatcher.
 type LabelMatcher struct {
 	Type    MatchType
@@ -71,8 +87,12 @@ type LabelMatcher struct {
 	score   float64 // Cardinality score, between 0 and 1, 0 is lowest cardinality.
 }
 
+func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.LabelValue) (*LabelMatcher, error) {
+	return newLabelMatcherWithTunning(matchType, name, value, nil)
+}
+
 // NewLabelMatcher returns a LabelMatcher object ready to use.
-func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.LabelValue, tunning *LabelMatcher) (*LabelMatcher, error) {
+func newLabelMatcherWithTunning(matchType MatchType, name model.LabelName, value model.LabelValue, tunning *LabelMatcher) (*LabelMatcher, error) {
 	m := &LabelMatcher{
 		Type:    matchType,
 		Name:    name,
