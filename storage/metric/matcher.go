@@ -64,6 +64,7 @@ func (lms LabelMatchers) Tunning() (ret LabelMatchers) {
 	for _, x := range lms {
 		if x.Name == "__name__" {
 			ret = append(ret, x)
+			continue
 		}
 		if x.Name == "__tunning__" {
 			if x.Match("-") {
