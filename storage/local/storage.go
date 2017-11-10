@@ -653,12 +653,14 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	// 不排序，则要求查询时相同tag必须相邻
 	// sort.Stable(labelMatchersByName(matchers))
 
+	tunnedMatchers := metric.LabelMatchers(matchers).Tunning()
+
 	merged := map[model.Fingerprint]model.Fingerprint{
 		model.Fingerprint(hashNew()): model.Fingerprint(0),
 	}
 
 	var values model.LabelValues
-	for i, x := range matchers {
+	for i, x := range tunnedMatchers {
 		switch x.Type {
 		case metric.Equal:
 			values = append(values, x.Value)
@@ -681,7 +683,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 			return nil, nil, nil
 		}
 
-		if i+1 < len(matchers) && matchers[i+1].Name == x.Name {
+		if i+1 < len(tunnedMatchers) && tunnedMatchers[i+1].Name == x.Name {
 			continue
 		}
 
@@ -725,7 +727,8 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 	matchers ...*metric.LabelMatcher,
 ) (map[model.Fingerprint]struct{}, []*metric.LabelMatcher, error) {
-	sort.Stable(metric.LabelMatchers(matchers).Tunning())
+	matchers = metric.LabelMatchers(matchers).Tunning()
+	sort.Stable(metric.LabelMatchers(matchers))
 
 	if len(matchers) == 0 || matchers[0].MatchesEmptyString() {
 		// No matchers at all or even the best matcher matches the empty string.
