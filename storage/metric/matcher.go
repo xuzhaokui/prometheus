@@ -62,6 +62,10 @@ func (lms LabelMatchers) Less(i, j int) bool { return lms[i].score < lms[j].scor
 func (lms LabelMatchers) Tunning() (ret LabelMatchers) {
 	var tunning *LabelMatcher
 	for _, x := range lms {
+		if x.Name == "__name__" {
+			ret = append(ret, x)
+			continue
+		}
 		if x.Name == "__tunning__" {
 			if x.Match("-") {
 				tunning = nil
