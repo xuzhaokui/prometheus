@@ -20,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"code.opsmind.com/common/task"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/log"
@@ -303,25 +305,34 @@ func (s *targetScraper) scrape(ctx context.Context, ts time.Time) (model.Samples
 		return nil, fmt.Errorf("server returned HTTP status %s", resp.Status)
 	}
 
-	var (
-		allSamples = make(model.Samples, 0, 200)
-		decSamples = make(model.Vector, 0, 50)
-	)
-	sdec := expfmt.SampleDecoder{
-		Dec: expfmt.NewDecoder(resp.Body, expfmt.ResponseFormat(resp.Header)),
-		Opts: &expfmt.DecodeOptions{
-			Timestamp: model.TimeFromUnixNano(ts.UnixNano()),
-		},
+	decSamples := make(model.Vector, 0, 50)
+	allSamples := make(model.Samples, 0, 200)
+	dopt := &expfmt.DecodeOptions{
+		Timestamp: model.TimeFromUnixNano(ts.UnixNano()),
 	}
-
-	for {
-		if err = sdec.Decode(&decSamples); err != nil {
-			break
+	proto := expfmt.ResponseFormat(resp.Header)
+	if proto == expfmt.FmtProtoDelim {
+		// 使用并发解析提高解析速度 by xuzhaokui@opsmind.com
+		wp := task.NewWorkerPool(-1)
+		fams, err := PbToMetricFamilies(wp, resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("decode metric families fail: %v", err)
 		}
+		decSamples, err = expfmt.ExtractSamples(dopt, fams...)
 		allSamples = append(allSamples, decSamples...)
-		decSamples = decSamples[:0]
+	} else {
+		sdec := expfmt.SampleDecoder{
+			Dec:  expfmt.NewDecoder(resp.Body, proto),
+			Opts: dopt,
+		}
+		for {
+			if err = sdec.Decode(&decSamples); err != nil {
+				break
+			}
+			allSamples = append(allSamples, decSamples...)
+			decSamples = decSamples[:0]
+		}
 	}
-
 	if err == io.EOF {
 		// Set err to nil since it is used in the scrape health recording.
 		err = nil
