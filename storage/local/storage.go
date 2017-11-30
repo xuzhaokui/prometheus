@@ -659,13 +659,13 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 
 	var values model.LabelValues
 	for i, x := range tunnedMatchers {
-		switch x.Type {
-		case metric.Equal:
-			values = append(values, x.Value)
-		case metric.ListMatch:
-			values = append(values, x.Values...)
-		case metric.NotEqual, metric.RegexMatch, metric.RegexNoMatch, metric.ListNoMatch:
-			if values == nil {
+		if values == nil {
+			switch x.Type {
+			case metric.Equal:
+				values = append(values, x.Value)
+			case metric.ListMatch:
+				values = append(values, x.Values...)
+			case metric.NotEqual, metric.RegexMatch, metric.RegexNoMatch, metric.ListNoMatch:
 				values, err = s.LabelValuesForLabelName(context.TODO(), x.Name)
 				if err != nil {
 					return nil, nil, err
@@ -673,7 +673,9 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 				if x.MatchesEmptyString() {
 					values = append(values, "")
 				}
+				values = x.Filter(values)
 			}
+		} else {
 			values = x.Filter(values)
 		}
 
