@@ -22,6 +22,7 @@ func PbToMetricFamilies(wp *task.WorkerPool, r io.Reader) ([]*dto.MetricFamily, 
 	go func() {
 		for {
 			if err != nil {
+				close(ch)
 				return
 			}
 			b, e := ReadDelimited(r)

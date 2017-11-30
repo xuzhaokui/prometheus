@@ -314,6 +314,7 @@ func (s *targetScraper) scrape(ctx context.Context, ts time.Time) (model.Samples
 	if proto == expfmt.FmtProtoDelim {
 		// 使用并发解析提高解析速度 by xuzhaokui@opsmind.com
 		wp := task.NewWorkerPool(-1)
+		defer wp.Dismiss()
 		fams, err := PbToMetricFamilies(wp, resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("decode metric families fail: %v", err)
