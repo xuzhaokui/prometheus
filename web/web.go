@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -358,6 +359,9 @@ func (h *Handler) alerts_json(w http.ResponseWriter, r *http.Request) {
 
 	for _, x := range alerts {
 		for _, y := range x.ActiveAlerts() {
+			if math.IsNaN(float64(y.Value)) || math.IsInf(float64(y.Value), 0) {
+				y.Value = 42.0
+			}
 			r := &alert{
 				Name:   x.Name(),
 				Metric: map[string]string{},
