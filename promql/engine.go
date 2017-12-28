@@ -411,11 +411,15 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 
 	evalTimer := query.stats.GetTimer(stats.InnerEvalTime).Start()
 	// Instant evaluation.
+	stalessDelta := StalenessDelta
+	if s.Interval > stalessDelta {
+		stalessDelta = s.Interval
+	}
 	if s.Start == s.End {
 		evaluator := &evaluator{
 			Timestamp:      s.Start,
 			ctx:            ctx,
-			StalenessDelta: s.Interval,
+			StalenessDelta: stalessDelta,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
