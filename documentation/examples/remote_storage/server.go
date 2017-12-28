@@ -26,7 +26,7 @@ import (
 )
 
 func main() {
-	http.HandleFunc("/receive", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		reqBuf, err := ioutil.ReadAll(snappy.NewReader(r.Body))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
