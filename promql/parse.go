@@ -385,6 +385,18 @@ func (p *parser) alertStmt() *AlertStmt {
 	}
 
 	var (
+		staleness time.Duration
+	)
+	if p.peek().typ == itmeStaleness {
+		p.next()
+		stalenessi := p.expect(itemDuration, ctx)
+		staleness, err = parseDuration(stalenessi.val)
+		if err != nil {
+			p.error(err)
+		}
+	}
+
+	var (
 		labels      = model.LabelSet{}
 		annotations = model.LabelSet{}
 	)
@@ -401,6 +413,7 @@ func (p *parser) alertStmt() *AlertStmt {
 		Name:        name.val,
 		Expr:        expr,
 		Duration:    duration,
+		Staleness:   staleness,
 		Labels:      labels,
 		Annotations: annotations,
 	}

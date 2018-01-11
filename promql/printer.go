@@ -104,6 +104,9 @@ func (node *AlertStmt) String() string {
 	if node.Duration > 0 {
 		s += fmt.Sprintf("\n\tFOR %s", model.Duration(node.Duration))
 	}
+	if node.Staleness > 0 {
+		s += fmt.Sprintf("\n\tSTALENESS %s", model.Duration(node.Staleness))
+	}
 	if len(node.Labels) > 0 {
 		s += fmt.Sprintf("\n\tLABELS %s", node.Labels)
 	}
