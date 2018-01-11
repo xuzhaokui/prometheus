@@ -49,6 +49,7 @@ func funcTime(ev *evaluator, args Expressions) model.Value {
 // the result as either per-second (if isRate is true) or overall.
 func extrapolatedRate(ev *evaluator, arg Expr, isCounter bool, isRate bool) model.Value {
 	ms := arg.(*MatrixSelector)
+	ms.sdMin = 2
 
 	rangeStart := ev.Timestamp.Add(-ms.Range - ms.Offset)
 	rangeEnd := ev.Timestamp.Add(-ms.Offset)
@@ -155,6 +156,7 @@ func funcIdelta(ev *evaluator, args Expressions) model.Value {
 }
 
 func instantValue(ev *evaluator, arg Expr, isRate bool) model.Value {
+	arg.(*MatrixSelector).sdMin = 2
 	resultVector := vector{}
 	for _, samples := range ev.evalMatrix(arg) {
 		// No sense in trying to compute a rate without at least two points. Drop
@@ -701,27 +703,65 @@ func funcAbs(ev *evaluator, args Expressions) model.Value {
 
 // === absent(vector model.ValVector) Vector ===
 func funcAbsent(ev *evaluator, args Expressions) model.Value {
+
 	if len(ev.evalVector(args[0])) > 0 {
 		return vector{}
 	}
-	m := model.Metric{}
+	tags := map[model.LabelName]model.LabelValues{}
+	candidate := map[model.LabelName]metric.LabelMatchers{}
 	if vs, ok := args[0].(*VectorSelector); ok {
 		for _, matcher := range vs.LabelMatchers {
-			if matcher.Type == metric.Equal && matcher.Name != model.MetricNameLabel {
-				m[matcher.Name] = matcher.Value
+			if matcher.Name == model.MetricNameLabel {
+				continue
+			}
+			_, has := tags[matcher.Name]
+			if !has && matcher.Type == metric.Equal {
+				tags[matcher.Name] = model.LabelValues{matcher.Value}
+			} else if !has && matcher.Type == metric.ListMatch {
+				tags[matcher.Name] = matcher.Values
+			} else {
+				candidate[matcher.Name] = append(candidate[matcher.Name], matcher)
 			}
 		}
 	}
-	return vector{
-		&sample{
+	ret := vector{
+		{
 			Metric: metric.Metric{
-				Metric: m,
-				Copied: true,
+				Metric: model.Metric{},
 			},
 			Value:     1,
 			Timestamp: ev.Timestamp,
 		},
 	}
+	for k, v := range tags {
+		new := vector{}
+		for _, x := range candidate[k] {
+			v = x.Filter(v)
+		}
+
+		for _, x := range ret {
+			for _, y := range v {
+				if y == "" {
+					continue
+				}
+				newMetric := model.Metric{}
+				for ok, ov := range x.Metric.Metric {
+					newMetric[ok] = ov
+				}
+				newMetric[k] = y
+				new = append(new, &sample{
+					Metric: metric.Metric{
+						Metric: newMetric,
+					},
+					Value:     x.Value,
+					Timestamp: x.Timestamp,
+				})
+			}
+		}
+
+		ret = new
+	}
+	return ret
 }
 
 // === ceil(vector model.ValVector) Vector ===

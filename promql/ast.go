@@ -58,6 +58,7 @@ type AlertStmt struct {
 	Name        string
 	Expr        Expr
 	Duration    time.Duration
+	Staleness   time.Duration
 	Labels      model.LabelSet
 	Annotations model.LabelSet
 }
@@ -135,6 +136,8 @@ type MatrixSelector struct {
 	Offset        time.Duration
 	LabelMatchers metric.LabelMatchers
 	All           bool
+
+	sdMin int
 
 	// The series iterators are populated at query preparation time.
 	iterators []local.SeriesIterator

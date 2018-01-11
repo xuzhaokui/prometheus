@@ -88,7 +88,8 @@ type AlertingRule struct {
 	// output vector before an alert transitions from Pending to Firing state.
 	holdDuration time.Duration
 	// Extra labels to attach to the resulting alert sample vectors.
-	labels model.LabelSet
+	staleness time.Duration
+	labels    model.LabelSet
 	// Non-identifying key/value pairs.
 	annotations model.LabelSet
 
@@ -100,11 +101,12 @@ type AlertingRule struct {
 }
 
 // NewAlertingRule constructs a new AlertingRule.
-func NewAlertingRule(name string, vec promql.Expr, hold time.Duration, lbls, anns model.LabelSet) *AlertingRule {
+func NewAlertingRule(name string, vec promql.Expr, hold time.Duration, staleness time.Duration, lbls, anns model.LabelSet) *AlertingRule {
 	return &AlertingRule{
 		name:         name,
 		vector:       vec,
 		holdDuration: hold,
+		staleness:    staleness,
 		labels:       lbls,
 		annotations:  anns,
 		active:       map[model.Fingerprint]*Alert{},
@@ -157,7 +159,7 @@ const resolvedRetention = 15 * time.Minute
 // Eval evaluates the rule expression and then creates pending alerts and fires
 // or removes previously pending alerts accordingly.
 func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.Engine, externalURLPath string) (model.Vector, error) {
-	query, err := engine.NewInstantQuery(r.vector.String(), ts, 0)
+	query, err := engine.NewInstantQuery(r.vector.String(), ts, r.staleness)
 	if err != nil {
 		return nil, err
 	}

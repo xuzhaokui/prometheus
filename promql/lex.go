@@ -189,6 +189,7 @@ const (
 	itemAlert
 	itemIf
 	itemFor
+	itmeStaleness
 	itemLabels
 	itemAnnotations
 	itemKeepCommon
@@ -226,6 +227,7 @@ var key = map[string]itemType{
 	"alert":       itemAlert,
 	"if":          itemIf,
 	"for":         itemFor,
+	"staleness":   itmeStaleness,
 	"labels":      itemLabels,
 	"annotations": itemAnnotations,
 	"offset":      itemOffset,
