@@ -1,0 +1,18 @@
+language: go
+
+go:
+  - 1.9.1
+
+go_import_path: code.opsmind.com/prometheus/
+
+script: go test -v $(go list ./... | grep -v /vendor/)
+
+install:
+ - true
+
+deploy:
+  provider: script
+  script: ./deploy.sh
+  on:
+    branch: master
+    

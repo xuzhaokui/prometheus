@@ -350,7 +350,7 @@ func TestFingerprintsForLabels(t *testing.T) {
 	}
 
 	for _, mt := range matcherTests {
-		var resfps map[model.Fingerprint]struct{}
+		var resfps map[model.Fingerprint]model.Fingerprint
 		for _, pair := range mt.pairs {
 			resfps = storage.fingerprintsForLabelPair(pair, nil, resfps)
 		}
