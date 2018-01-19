@@ -14,7 +14,7 @@ before_script:
   - cd $TRAVIS_BUILD_DIR
 
 
-script: go test -v $(go list ./... | grep -v /vendor/)
+script: go test $(go list ./... | grep -v /vendor/)
 
 install:
  - true
