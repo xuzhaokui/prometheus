@@ -570,19 +570,19 @@ func (s *MemorySeriesStorage) QueryInstant(_ context.Context, ts model.Time, sta
 // is the same as the given one.
 func (s *MemorySeriesStorage) fingerprintsForLabelPair(
 	pair model.LabelPair,
-	mergeWith map[model.Fingerprint]struct{},
-	intersectWith map[model.Fingerprint]struct{},
-) map[model.Fingerprint]struct{} {
+	mergeWith map[model.Fingerprint]model.Fingerprint,
+	intersectWith map[model.Fingerprint]model.Fingerprint,
+) map[model.Fingerprint]model.Fingerprint {
 	if mergeWith == nil {
-		mergeWith = map[model.Fingerprint]struct{}{}
+		mergeWith = map[model.Fingerprint]model.Fingerprint{}
 	}
 	for _, fp := range s.persistence.fingerprintsForLabelPair(pair) {
 		if intersectWith == nil {
-			mergeWith[fp] = struct{}{}
+			mergeWith[fp] = model.Fingerprint(0)
 			continue
 		}
 		if _, ok := intersectWith[fp]; ok {
-			mergeWith[fp] = struct{}{}
+			mergeWith[fp] = model.Fingerprint(0)
 		}
 	}
 	return mergeWith
@@ -646,7 +646,7 @@ func hashAddByte(h uint64, b byte) uint64 {
 
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	matchers ...*metric.LabelMatcher,
-) (map[model.Fingerprint]struct{}, []*metric.LabelMatcher, error) {
+) (map[model.Fingerprint]model.Fingerprint, []*metric.LabelMatcher, error) {
 
 	var err error
 
@@ -716,9 +716,9 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 		merged = new
 		values = nil
 	}
-	candidateFPs := map[model.Fingerprint]struct{}{}
+	candidateFPs := map[model.Fingerprint]model.Fingerprint{}
 	for k, v := range merged {
-		candidateFPs[s.mapper.mappingRealFastfp(v, k)] = struct{}{}
+		candidateFPs[s.mapper.mappingRealFastfp(v, k)] = k
 	}
 	return candidateFPs, nil, nil
 }
@@ -726,7 +726,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 // candidateFPsForLabelMatchers returns candidate FPs for given matchers and remaining matchers to be checked.
 func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 	matchers ...*metric.LabelMatcher,
-) (map[model.Fingerprint]struct{}, []*metric.LabelMatcher, error) {
+) (map[model.Fingerprint]model.Fingerprint, []*metric.LabelMatcher, error) {
 	matchers = metric.LabelMatchers(matchers).Tunning()
 	sort.Stable(metric.LabelMatchers(matchers))
 
@@ -737,7 +737,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 
 	var (
 		matcherIdx   int
-		candidateFPs map[model.Fingerprint]struct{}
+		candidateFPs map[model.Fingerprint]model.Fingerprint
 	)
 
 	// Equal matchers.
@@ -787,7 +787,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 		if len(lvs) == 0 {
 			return nil, nil, nil
 		}
-		fps := map[model.Fingerprint]struct{}{}
+		fps := map[model.Fingerprint]model.Fingerprint{}
 		for _, lv := range lvs {
 			s.fingerprintsForLabelPair(
 				model.LabelPair{
@@ -831,7 +831,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchers(
 		if len(lvs) == 0 {
 			return nil, nil, nil
 		}
-		fps := map[model.Fingerprint]struct{}{}
+		fps := map[model.Fingerprint]model.Fingerprint{}
 		for _, lv := range lvs {
 			s.fingerprintsForLabelPair(
 				model.LabelPair{
@@ -857,7 +857,7 @@ func (s *MemorySeriesStorage) seriesForLabelMatchers(
 	all bool,
 	matchers ...*metric.LabelMatcher,
 ) ([]fingerprintSeriesPair, error) {
-	var candidateFPs map[model.Fingerprint]struct{}
+	var candidateFPs map[model.Fingerprint]model.Fingerprint
 	var matchersToCheck []*metric.LabelMatcher
 	var err error
 	if all {
@@ -871,7 +871,7 @@ func (s *MemorySeriesStorage) seriesForLabelMatchers(
 
 	result := []fingerprintSeriesPair{}
 FPLoop:
-	for fp := range candidateFPs {
+	for fp, sum := range candidateFPs {
 		s.fpLocker.Lock(fp)
 		series := s.seriesForRange(fp, from, through)
 		s.fpLocker.Unlock(fp)
@@ -885,6 +885,9 @@ FPLoop:
 				continue FPLoop
 			}
 		}
+		if sum != 0 && series.metric.Fingerprint() != sum {
+			continue FPLoop
+		}
 		result = append(result, fingerprintSeriesPair{fp, series})
 	}
 	return result, nil
@@ -893,7 +896,7 @@ FPLoop:
 func (s *MemorySeriesStorage) fpsForLabelMatchers(
 	from, through model.Time,
 	matchers ...*metric.LabelMatcher,
-) (map[model.Fingerprint]struct{}, error) {
+) (map[model.Fingerprint]model.Fingerprint, error) {
 	candidateFPs, matchersToCheck, err := s.candidateFPsForLabelMatchers(matchers...)
 	if err != nil {
 		return nil, err
