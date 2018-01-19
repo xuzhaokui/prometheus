@@ -48,6 +48,7 @@ func TestAlertingRule(t *testing.T) {
 		"HTTPRequestRateLow",
 		expr,
 		time.Minute,
+		0,
 		model.LabelSet{"severity": "{{\"c\"}}ritical"},
 		model.LabelSet{},
 	)
