@@ -17,6 +17,7 @@ git -C $TRAVIS_BUILD_DIR log -10 > _bin/_version
 echo "$n" > _bin/_pack
 echo "$n"
 
+md5sum bin/prometheus > _bin/md5sum
 
 cp bin/prometheus _bin/
 
