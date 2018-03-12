@@ -19,6 +19,7 @@ import (
 	"math"
 	"runtime"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -411,11 +412,22 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 
 	evalTimer := query.stats.GetTimer(stats.InnerEvalTime).Start()
 	// Instant evaluation.
+	stalessDelta := StalenessDelta
+	if s.Interval > stalessDelta {
+		stalessDelta = s.Interval
+	}
+
+	matStalenessDelta := s.Interval
+	if matStalenessDelta > time.Minute*30 {
+		matStalenessDelta = time.Minute * 30
+	}
+
 	if s.Start == s.End {
 		evaluator := &evaluator{
-			Timestamp:      s.Start,
-			ctx:            ctx,
-			StalenessDelta: s.Interval,
+			Timestamp:         s.Start,
+			ctx:               ctx,
+			StalenessDelta:    stalessDelta,
+			MatStalenessDelta: matStalenessDelta,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
@@ -445,9 +457,10 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 		}
 
 		evaluator := &evaluator{
-			Timestamp:      ts,
-			ctx:            ctx,
-			StalenessDelta: s.Interval,
+			Timestamp:         ts,
+			ctx:               ctx,
+			StalenessDelta:    s.Interval,
+			MatStalenessDelta: 0,
 		}
 		val, err := evaluator.Eval(s.Expr)
 		if err != nil {
@@ -516,11 +529,17 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 
 func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, s *EvalStmt) error {
 	var queryErr error
+	sd := StalenessDelta
+	if s.Interval > StalenessDelta {
+		sd = s.Interval
+	}
+
+	matSd := s.Interval
+	if matSd > time.Minute*30 {
+		matSd = time.Minute * 30
+	}
 	Inspect(s.Expr, func(node Node) bool {
-		sd := StalenessDelta
-		if s.Interval > StalenessDelta {
-			sd = s.Interval
-		}
+
 		switch n := node.(type) {
 		case *VectorSelector:
 			if s.Start.Equal(s.End) {
@@ -534,7 +553,7 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 			} else {
 				n.iterators, queryErr = querier.QueryRange(
 					ctx,
-					s.Start.Add(-n.Offset-StalenessDelta),
+					s.Start.Add(-n.Offset-sd),
 					s.End.Add(-n.Offset),
 					n.All,
 					n.LabelMatchers...,
@@ -546,7 +565,7 @@ func (ng *Engine) populateIterators(ctx context.Context, querier local.Querier, 
 		case *MatrixSelector:
 			n.iterators, queryErr = querier.QueryRange(
 				ctx,
-				s.Start.Add(-n.Offset-n.Range),
+				s.Start.Add(-n.Offset-n.Range-matSd),
 				s.End.Add(-n.Offset),
 				n.All,
 				n.LabelMatchers...,
@@ -582,8 +601,9 @@ func (ng *Engine) closeIterators(s *EvalStmt) {
 type evaluator struct {
 	ctx context.Context
 
-	Timestamp      model.Time
-	StalenessDelta time.Duration
+	Timestamp         model.Time
+	StalenessDelta    time.Duration
+	MatStalenessDelta time.Duration
 }
 
 // fatalf causes a panic with the input formatted into an error.
@@ -765,7 +785,7 @@ func (ev *evaluator) eval(expr Expr) model.Value {
 // vectorSelector evaluates a *VectorSelector expression.
 func (ev *evaluator) vectorSelector(node *VectorSelector) vector {
 	sd := StalenessDelta
-	if ev.StalenessDelta > StalenessDelta {
+	if ev.StalenessDelta > StalenessDelta && !strings.HasPrefix(node.Name, "om_nodata_") {
 		sd = ev.StalenessDelta
 	}
 	vec := vector{}
@@ -786,14 +806,38 @@ func (ev *evaluator) vectorSelector(node *VectorSelector) vector {
 
 // matrixSelector evaluates a *MatrixSelector expression.
 func (ev *evaluator) matrixSelector(node *MatrixSelector) matrix {
+	sd := time.Duration(0)
+	if !strings.HasPrefix(node.Name, "om_nodata_") {
+		sd = ev.MatStalenessDelta
+	}
+	if node.sdMin < 1 {
+		node.sdMin = 1
+	}
+
 	interval := metric.Interval{
 		OldestInclusive: ev.Timestamp.Add(-node.Range - node.Offset),
 		NewestInclusive: ev.Timestamp.Add(-node.Offset),
 	}
 
+	sdInterval := metric.Interval{
+		OldestInclusive: ev.Timestamp.Add(-node.Range - node.Offset - sd),
+		NewestInclusive: ev.Timestamp.Add(-node.Range - node.Offset),
+	}
+
 	sampleStreams := make([]*sampleStream, 0, len(node.iterators))
 	for _, it := range node.iterators {
 		samplePairs := it.RangeValues(interval)
+
+		sdNum := node.sdMin - len(samplePairs)
+		if sdNum > 0 {
+			sdSamplePairs := it.RangeValues(sdInterval)
+			if len(sdSamplePairs) < sdNum {
+				sdNum = len(sdSamplePairs)
+			}
+			samplePairs = append(sdSamplePairs[len(sdSamplePairs)-sdNum:len(sdSamplePairs)], samplePairs...)
+
+		}
+
 		if len(samplePairs) == 0 {
 			continue
 		}

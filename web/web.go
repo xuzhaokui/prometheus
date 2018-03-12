@@ -16,9 +16,11 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -29,6 +31,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/common/expfmt"
 
 	pprof_runtime "runtime/pprof"
 	template_text "text/template"
@@ -182,9 +186,9 @@ func New(o *Options) *Handler {
 		router.Redirect(w, r, "/graph", http.StatusFound)
 	})
 
+	router.Post("/v1/remote_push", instrf("remote_push", h.remotePush))
 	router.Get("/v1/alerts.json", instrf("alerts", h.jsonAlerts))
 	router.Get("/alerts", instrf("alerts", h.alerts))
-	router.Get("/alerts.json", instrf("alerts", h.alerts_json))
 	router.Get("/graph", instrf("graph", h.graph))
 	router.Get("/status", instrf("status", h.status))
 	router.Get("/flags", instrf("flags", h.flags))
@@ -298,6 +302,88 @@ func (h *Handler) alerts(w http.ResponseWriter, r *http.Request) {
 	h.executeTemplate(w, "alerts.html", alertStatus)
 }
 
+func respErr(w http.ResponseWriter, err error) {
+	h := w.Header()
+	h.Set("Content-Type", "application/json")
+
+	if err == nil {
+		w.WriteHeader(200)
+		w.Write([]byte{'{', '}'})
+		return
+	}
+	w.WriteHeader(500)
+	ret := map[string]string{}
+	ret["error"] = err.Error()
+	b, _ := json.Marshal(ret)
+	w.Write(b)
+	return
+}
+
+func (h *Handler) remotePush(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	if h.storage.NeedsThrottling() {
+		err = errors.New("storage needs throttling")
+		respErr(w, err)
+		return
+	}
+
+	decSamples := make(model.Vector, 0, 50)
+	allSamples := make(model.Samples, 0, 200)
+
+	proto := expfmt.ResponseFormat(r.Header)
+	sdec := expfmt.SampleDecoder{
+		Dec: expfmt.NewDecoder(r.Body, proto),
+		Opts: &expfmt.DecodeOptions{
+			Timestamp: model.Now(),
+		},
+	}
+
+	for {
+		if err = sdec.Decode(&decSamples); err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			break
+		}
+		allSamples = append(allSamples, decSamples...)
+		decSamples = decSamples[:0]
+	}
+
+	var (
+		numTotal      = 0
+		numOutOfOrder = 0
+		numDuplicates = 0
+	)
+
+	for _, s := range allSamples {
+		numTotal++
+		if err := h.storage.Append(s); err != nil {
+			switch err {
+			case local.ErrOutOfOrderSample:
+				numOutOfOrder++
+				log.With("sample", s).With("error", err).Debug("Remote Sample discarded")
+			case local.ErrDuplicateSampleForTimestamp:
+				numDuplicates++
+				log.With("sample", s).With("error", err).Debug("Remote Sample discarded")
+			default:
+				log.With("sample", s).With("error", err).Warn("Remote Sample discarded")
+			}
+		}
+	}
+	log.With("numTotal", numTotal).Info("Total num of remote samples")
+	if numOutOfOrder > 0 {
+		log.With("numDropped", numOutOfOrder).Warn("Error on ingesting out-of-order remote samples")
+	}
+	if numDuplicates > 0 {
+		log.With("numDropped", numDuplicates).Warn("Error on ingesting remote samples with different value but same timestamp")
+	}
+	err = nil
+	respErr(w, err)
+	return
+}
+
 func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 	type alert struct {
 		Name   string            `json:"name"`
@@ -320,6 +406,9 @@ func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 			ret[x.Name()] = alts
 		}
 		for _, y := range x.ActiveAlerts() {
+			if math.IsNaN(float64(y.Value)) || math.IsInf(float64(y.Value), 0) {
+				y.Value = 42.0
+			}
 			r := &alert{
 				Name:   x.Name(),
 				Metric: map[string]string{},
@@ -333,44 +422,6 @@ func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 		ret[x.Name()] = alts
 	}
-	b, err := json.Marshal(ret)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(b)
-}
-
-func (h *Handler) alerts_json(w http.ResponseWriter, r *http.Request) {
-
-	type alert struct {
-		Name   string            `json:"name"`
-		Metric map[string]string `json:"metric"`
-		Value  float64           `json:"value"`
-		Status int               `json:"status"`
-	}
-
-	ret := []*alert{}
-
-	alerts := h.ruleManager.AlertingRules()
-
-	for _, x := range alerts {
-		for _, y := range x.ActiveAlerts() {
-			r := &alert{
-				Name:   x.Name(),
-				Metric: map[string]string{},
-				Value:  float64(y.Value),
-				Status: int(y.State),
-			}
-			for k, v := range y.Labels {
-				r.Metric[string(k)] = string(v)
-			}
-			ret = append(ret, r)
-		}
-	}
-
 	b, err := json.Marshal(ret)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

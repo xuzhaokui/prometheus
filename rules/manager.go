@@ -469,7 +469,7 @@ func (m *Manager) loadGroups(interval time.Duration, filenames ...string) (map[s
 
 			switch r := stmt.(type) {
 			case *promql.AlertStmt:
-				rule = NewAlertingRule(r.Name, r.Expr, r.Duration, r.Labels, r.Annotations)
+				rule = NewAlertingRule(r.Name, r.Expr, r.Duration, r.Staleness, r.Labels, r.Annotations)
 
 			case *promql.RecordStmt:
 				rule = NewRecordingRule(r.Name, r.Expr, r.Labels)
