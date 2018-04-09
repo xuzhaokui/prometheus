@@ -716,11 +716,12 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 		merged = new
 		values = nil
 	}
-	candidateFPs := map[model.Fingerprint]model.Fingerprint{}
 	for k, v := range merged {
-		candidateFPs[k] = s.mapper.mappingRealFastfp(v, k)
+		if vv := s.mapper.mappingRealFastfp(v, k); vv != v {
+			merged[k] = vv
+		}
 	}
-	return candidateFPs, nil, nil
+	return merged, nil, nil
 }
 
 // candidateFPsForLabelMatchers returns candidate FPs for given matchers and remaining matchers to be checked.
