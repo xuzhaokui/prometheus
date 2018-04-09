@@ -718,7 +718,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 	}
 	candidateFPs := map[model.Fingerprint]model.Fingerprint{}
 	for k, v := range merged {
-		candidateFPs[s.mapper.mappingRealFastfp(v, k)] = k
+		candidateFPs[k] = s.mapper.mappingRealFastfp(v, k)
 	}
 	return candidateFPs, nil, nil
 }
@@ -871,10 +871,14 @@ func (s *MemorySeriesStorage) seriesForLabelMatchers(
 
 	result := []fingerprintSeriesPair{}
 FPLoop:
-	for fp, sum := range candidateFPs {
-		s.fpLocker.Lock(fp)
-		series := s.seriesForRange(fp, from, through)
-		s.fpLocker.Unlock(fp)
+	for fp, ffp := range candidateFPs {
+		key := fp // {}
+		if ffp != 0 {
+			key = ffp // {{}}
+		}
+		s.fpLocker.Lock(key)
+		series := s.seriesForRange(key, from, through)
+		s.fpLocker.Unlock(key)
 
 		if series == nil {
 			continue FPLoop
@@ -885,10 +889,10 @@ FPLoop:
 				continue FPLoop
 			}
 		}
-		if sum != 0 && series.metric.Fingerprint() != sum {
+		if ffp != 0 /* {{}} */ && series.metric.Fingerprint() != fp {
 			continue FPLoop
 		}
-		result = append(result, fingerprintSeriesPair{fp, series})
+		result = append(result, fingerprintSeriesPair{key, series})
 	}
 	return result, nil
 }
