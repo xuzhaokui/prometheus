@@ -16,6 +16,7 @@ package metric
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/prometheus/common/model"
@@ -32,6 +33,10 @@ const (
 	RegexNoMatch
 	ListMatch
 	ListNoMatch
+	LTE
+	LSS
+	GTE
+	GTR
 )
 
 func (m MatchType) String() string {
@@ -42,6 +47,10 @@ func (m MatchType) String() string {
 		RegexNoMatch: "!~",
 		ListMatch:    "=-",
 		ListNoMatch:  "!-",
+		LTE:          "<=",
+		LSS:          "<",
+		GTE:          ">=",
+		GTR:          ">",
 	}
 	if str, ok := typeToStr[m]; ok {
 		return str
@@ -81,14 +90,16 @@ func (lms LabelMatchers) Tunning() (ret LabelMatchers) {
 
 // LabelMatcher models the matching of a label. Create with NewLabelMatcher.
 type LabelMatcher struct {
-	Type    MatchType
-	Name    model.LabelName
-	Value   model.LabelValue
-	Values  model.LabelValues
-	Tunning *LabelMatcher
-	re      *regexp.Regexp
-	lst     map[string]struct{}
-	score   float64 // Cardinality score, between 0 and 1, 0 is lowest cardinality.
+	Type     MatchType
+	Name     model.LabelName
+	Value    model.LabelValue
+	Values   model.LabelValues
+	Tunning  *LabelMatcher
+	re       *regexp.Regexp
+	lst      map[string]struct{}
+	compType int // 1: 数字 2: 字符串
+	compNum  float64
+	score    float64 // Cardinality score, between 0 and 1, 0 is lowest cardinality.
 }
 
 func NewLabelMatcher(matchType MatchType, name model.LabelName, value model.LabelValue) (*LabelMatcher, error) {
@@ -120,6 +131,14 @@ func newLabelMatcherWithTunning(matchType MatchType, name model.LabelName, value
 		for _, x := range strings.Split(string(value), s) {
 			m.lst[x] = struct{}{}
 			m.Values = append(m.Values, model.LabelValue(x))
+		}
+	}
+	if matchType == LTE || matchType == LSS || matchType == GTE || matchType == GTR {
+		m.compType = 2
+		var err error
+		m.compNum, err = strconv.ParseFloat(string(m.Value), 64)
+		if err == nil {
+			m.compType = 1
 		}
 	}
 	m.calculateScore()
@@ -181,7 +200,7 @@ func (m *LabelMatcher) calculateScore() {
 		m.score = 0.6 - lengthCorrection
 	case RegexNoMatch, ListNoMatch:
 		m.score = 0.8 + lengthCorrection
-	case NotEqual:
+	case NotEqual, LTE, LSS, GTE, GTR:
 		m.score = 0.9 + lengthCorrection
 	}
 	if m.Type != Equal {
@@ -253,6 +272,38 @@ func (m *LabelMatcher) Match(v model.LabelValue) bool {
 	case ListNoMatch:
 		_, ok := m.lst[string(v)]
 		return !ok
+	case LTE:
+		if m.compType == 1 {
+			if f, err := strconv.ParseFloat(string(v), 64); err == nil && f <= m.compNum {
+				return true
+			}
+			return false
+		}
+		return v <= m.Value
+	case LSS:
+		if m.compType == 1 {
+			if f, err := strconv.ParseFloat(string(v), 64); err == nil && f < m.compNum {
+				return true
+			}
+			return false
+		}
+		return v < m.Value
+	case GTE:
+		if m.compType == 1 {
+			if f, err := strconv.ParseFloat(string(v), 64); err == nil && f >= m.compNum {
+				return true
+			}
+			return false
+		}
+		return v >= m.Value
+	case GTR:
+		if m.compType == 1 {
+			if f, err := strconv.ParseFloat(string(v), 64); err == nil && f > m.compNum {
+				return true
+			}
+			return false
+		}
+		return v > m.Value
 	default:
 		panic("invalid match type")
 	}

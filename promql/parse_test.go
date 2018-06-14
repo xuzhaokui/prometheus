@@ -991,10 +991,14 @@ var testExpr = []struct {
 		errMsg: "unexpected character inside braces: '*'",
 	}, {
 		input: `foo{a>="b"}`,
-		fail:  true,
-		// TODO(fabxc): willingly lexing wrong tokens allows for more precrise error
-		// messages from the parser - consider if this is an option.
-		errMsg: "unexpected character inside braces: '>'",
+		expected: &VectorSelector{
+			Name:   "foo",
+			Offset: 0,
+			LabelMatchers: metric.LabelMatchers{
+				mustLabelMatcher(metric.GTE, "a", "b"),
+				mustLabelMatcher(metric.Equal, model.MetricNameLabel, "foo"),
+			},
+		},
 	}, {
 		input:  `foo{gibberish}`,
 		fail:   true,

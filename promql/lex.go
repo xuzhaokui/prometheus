@@ -618,6 +618,20 @@ func lexInsideBraces(l *lexer) stateFn {
 		default:
 			return l.errorf("unexpected character after '!' inside braces: %q", nr)
 		}
+	case r == '<':
+		if t := l.peek(); t == '=' {
+			l.next()
+			l.emit(itemLTE)
+		} else {
+			l.emit(itemLSS)
+		}
+	case r == '>':
+		if t := l.peek(); t == '=' {
+			l.next()
+			l.emit(itemGTE)
+		} else {
+			l.emit(itemGTR)
+		}
 	case r == '{':
 		return l.errorf("unexpected left brace %q", r)
 	case r == '}':
