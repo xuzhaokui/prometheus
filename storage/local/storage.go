@@ -665,7 +665,7 @@ func (s *MemorySeriesStorage) candidateFPsForLabelMatchersAll(
 				values = append(values, x.Value)
 			case metric.ListMatch:
 				values = append(values, x.Values...)
-			case metric.NotEqual, metric.RegexMatch, metric.RegexNoMatch, metric.ListNoMatch:
+			default:
 				values, err = s.LabelValuesForLabelName(context.TODO(), x.Name)
 				if err != nil {
 					return nil, nil, err
