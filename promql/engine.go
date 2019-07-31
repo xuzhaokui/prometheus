@@ -795,8 +795,21 @@ func (ev *evaluator) vectorSelector(node *VectorSelector) vector {
 		if samplePair.Timestamp.Before(refTime.Add(-sd)) {
 			continue // Sample outside of staleness policy window.
 		}
+
+		metric := it.Metric()
+		alias := node.LabelMatchers.Lst()
+		for k, v := range it.Metric().Metric {
+			if x1, ok := alias[string(k)]; ok {
+				if x2, ok := x1[string(v)]; ok {
+					for kk, vv := range x2 {
+						metric.Set(model.LabelName(kk), model.LabelValue(vv))
+					}
+				}
+			}
+		}
+
 		vec = append(vec, &sample{
-			Metric:    it.Metric(),
+			Metric:    metric,
 			Value:     samplePair.Value,
 			Timestamp: ev.Timestamp,
 		})
@@ -848,8 +861,20 @@ func (ev *evaluator) matrixSelector(node *MatrixSelector) matrix {
 			}
 		}
 
+		metric := it.Metric()
+		alias := node.LabelMatchers.Lst()
+		for k, v := range it.Metric().Metric {
+			if x1, ok := alias[string(k)]; ok {
+				if x2, ok := x1[string(v)]; ok {
+					for kk, vv := range x2 {
+						metric.Set(model.LabelName(kk), model.LabelValue(vv))
+					}
+				}
+			}
+		}
+
 		sampleStream := &sampleStream{
-			Metric: it.Metric(),
+			Metric: metric,
 			Values: samplePairs,
 		}
 		sampleStreams = append(sampleStreams, sampleStream)
