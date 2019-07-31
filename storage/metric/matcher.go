@@ -14,6 +14,7 @@
 package metric
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -88,6 +89,17 @@ func (lms LabelMatchers) Tunning() (ret LabelMatchers) {
 	return
 }
 
+func (m *LabelMatchers) Lst() map[string]map[string]map[string]string {
+	ret := map[string]map[string]map[string]string{}
+	for _, x := range *m {
+		if !x.alias {
+			continue
+		}
+		ret[string(x.Name)] = x.lst
+	}
+	return ret
+}
+
 // LabelMatcher models the matching of a label. Create with NewLabelMatcher.
 type LabelMatcher struct {
 	Type     MatchType
@@ -96,7 +108,8 @@ type LabelMatcher struct {
 	Values   model.LabelValues
 	Tunning  *LabelMatcher
 	re       *regexp.Regexp
-	lst      map[string]struct{}
+	lst      map[string]map[string]string
+	alias    bool
 	compType int // 1: 数字 2: 字符串
 	compNum  float64
 	score    float64 // Cardinality score, between 0 and 1, 0 is lowest cardinality.
@@ -122,15 +135,13 @@ func newLabelMatcherWithTunning(matchType MatchType, name model.LabelName, value
 		m.re = re
 	}
 	if matchType == ListMatch || matchType == ListNoMatch {
-		m.lst = map[string]struct{}{}
-		s := ","
-		if len(value) > 2 && strings.HasPrefix(string(value), "/") && strings.HasSuffix(string(value), "/") {
-			s = "|"
-			value = model.LabelValue(strings.Replace(string(value)[1:len(value)-1], `\`, "", -1))
+		var err error
+		m.lst, m.alias, err = processListMatch(string(value))
+		if err != nil {
+			return nil, err
 		}
-		for _, x := range strings.Split(string(value), s) {
-			m.lst[x] = struct{}{}
-			m.Values = append(m.Values, model.LabelValue(x))
+		for k, _ := range m.lst {
+			m.Values = append(m.Values, model.LabelValue(k))
 		}
 	}
 	if matchType == LTE || matchType == LSS || matchType == GTE || matchType == GTR {
@@ -319,4 +330,67 @@ func (m *LabelMatcher) Filter(in model.LabelValues) model.LabelValues {
 		}
 	}
 	return out
+}
+
+// a:[x:1,y:2],b:[1,2],c:[1]
+var re = regexp.MustCompile(`(?U)(\:\[[^\[\]]*\])`)
+
+func processListMatch(value string) (lst map[string]map[string]string, b bool, err error) {
+	alias := []map[string]string{}
+	aliasKeys := []string{}
+	value = re.ReplaceAllStringFunc(value, func(s string) string {
+		// :[x:1,y:2]
+		b = true
+		a := map[string]string{}
+		for i, x := range strings.Split(s[2:len(s)-1], ",") {
+			k := ""
+			v := ""
+			sl := strings.SplitN(x, ":", 2)
+			if len(sl) == 2 {
+				k = sl[0]
+				v = sl[1]
+			} else {
+				if i >= len(aliasKeys) {
+					err = errors.New("alias keys out of bound")
+					return ""
+				}
+				k = aliasKeys[i]
+				v = sl[0]
+			}
+			if i < len(aliasKeys) {
+				aliasKeys[i] = k
+			} else {
+				aliasKeys = append(aliasKeys, k)
+			}
+			a[k] = v
+		}
+		alias = append(alias, a)
+		return "__OM_ALIAS__"
+	})
+
+	if err != nil {
+		return
+	}
+
+	// value = a__OM_ALIAS__,b__OM_ALIAS__,c__OM_ALIAS__
+
+	lst = map[string]map[string]string{}
+	s := ","
+	if len(value) > 2 && strings.HasPrefix(string(value), "/") && strings.HasSuffix(string(value), "/") {
+		s = "|"
+		value = strings.Replace(string(value)[1:len(value)-1], `\`, "", -1)
+	}
+
+	index := 0
+	for _, x := range strings.Split(string(value), s) {
+		var a map[string]string
+		if x2 := strings.TrimSuffix(x, "__OM_ALIAS__"); len(x2) != len(x) {
+			a = alias[index]
+			index += 1
+			x = x2
+		}
+		lst[x] = a
+	}
+
+	return
 }
