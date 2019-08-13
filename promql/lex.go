@@ -923,10 +923,6 @@ func isAlphaNumeric(r rune) bool {
 	return isAlpha(r) || isDigit(r)
 }
 
-func isDot(r rune) bool {
-	return r == '.'
-}
-
 // isDigit reports whether r is a digit. Note: we cannot use unicode.IsDigit()
 // instead because that also classifies non-Latin digits as digits. See
 // https://github.com/prometheus/prometheus/issues/939.
@@ -936,16 +932,16 @@ func isDigit(r rune) bool {
 
 // isAlpha reports whether r is an alphabetic or underscore.
 func isAlpha(r rune) bool {
-	return r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
+	return r == '.' || r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
 }
 
 // isLabel reports whether the string can be used as label.
 func isLabel(s string) bool {
-	if len(s) == 0 || !(isAlpha(rune(s[0])) || isDot(rune(s[0]))) {
+	if len(s) == 0 || !isAlpha(rune(s[0])) {
 		return false
 	}
 	for _, c := range s[1:] {
-		if !(isAlphaNumeric(c) || isDot(c)) {
+		if !isAlphaNumeric(c) {
 			return false
 		}
 	}
