@@ -932,7 +932,7 @@ func isDigit(r rune) bool {
 
 // isAlpha reports whether r is an alphabetic or underscore.
 func isAlpha(r rune) bool {
-	return r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
+	return r == '.' || r == '_' || ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
 }
 
 // isLabel reports whether the string can be used as label.
