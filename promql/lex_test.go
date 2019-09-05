@@ -119,11 +119,11 @@ var tests = []struct {
 		input:    "`test\\.expression`",
 		expected: []item{{itemString, 0, "`test\\.expression`"}},
 	},
-	{
+	/*{
 		// See https://github.com/prometheus/prometheus/issues/939.
 		input: ".٩",
 		fail:  true,
-	},
+	},*/
 	// Test duration.
 	{
 		input:    "5s",
