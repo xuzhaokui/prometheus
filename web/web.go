@@ -52,6 +52,7 @@ import (
 	"github.com/prometheus/prometheus/storage/local"
 	"github.com/prometheus/prometheus/template"
 	"github.com/prometheus/prometheus/util/httputil"
+	"github.com/prometheus/prometheus/util/stats"
 	api_v1 "github.com/prometheus/prometheus/web/api/v1"
 	"github.com/prometheus/prometheus/web/ui"
 )
@@ -322,7 +323,6 @@ func respErr(w http.ResponseWriter, err error) {
 func (h *Handler) remotePush(w http.ResponseWriter, r *http.Request) {
 
 	var err error
-
 	if h.storage.NeedsThrottling() {
 		err = errors.New("storage needs throttling")
 		respErr(w, err)
@@ -372,7 +372,6 @@ func (h *Handler) remotePush(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	log.With("numTotal", numTotal).Info("Total num of remote samples")
 	if numOutOfOrder > 0 {
 		log.With("numDropped", numOutOfOrder).Warn("Error on ingesting out-of-order remote samples")
 	}
@@ -394,6 +393,7 @@ func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 	type alertsPerRule struct {
 		Rule   *rules.ALertingRuleDesc `json:"rule"`
 		Alerts []*alert                `json:"alerts"`
+		Stats  *stats.QueryStats       `json:"stats"`
 	}
 	ret := map[string]alertsPerRule{}
 	rules := h.ruleManager.AlertingRules()
@@ -401,7 +401,8 @@ func (h *Handler) jsonAlerts(w http.ResponseWriter, r *http.Request) {
 		alts, ok := ret[x.Name()]
 		if !ok {
 			alts = alertsPerRule{
-				Rule: x.Desc(),
+				Rule:  x.Desc(),
+				Stats: x.LastStats(),
 			}
 			ret[x.Name()] = alts
 		}

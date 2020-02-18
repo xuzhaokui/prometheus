@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/util/stats"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -29,6 +30,7 @@ type RecordingRule struct {
 	name   string
 	vector promql.Expr
 	labels model.LabelSet
+	stats  *stats.QueryStats
 }
 
 // NewRecordingRule returns a new recording rule.
@@ -111,3 +113,5 @@ func (rule RecordingRule) HTMLSnippet(pathPrefix string) template.HTML {
 		pathPrefix+strutil.GraphLinkForExpression(ruleExpr),
 		template.HTMLEscapeString(ruleExpr)))
 }
+
+func (rule RecordingRule) LastStats() *stats.QueryStats { return rule.stats }

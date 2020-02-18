@@ -13,6 +13,11 @@
 
 package stats
 
+import (
+	"encoding/json"
+	"sort"
+)
+
 // QueryTiming identifies the code area or functionality in which time is spent
 // during a query.
 type QueryTiming int
@@ -31,18 +36,52 @@ const (
 func (s QueryTiming) String() string {
 	switch s {
 	case TotalEvalTime:
-		return "Total eval time"
+		return "TotalEval"
 	case ResultSortTime:
-		return "Result sorting time"
+		return "ResultSorting"
 	case QueryPreparationTime:
-		return "Query preparation time"
+		return "QueryPreparation"
 	case InnerEvalTime:
-		return "Inner eval time"
+		return "InnerEval"
 	case ResultAppendTime:
-		return "Result append time"
+		return "ResultAppend"
 	case ExecQueueTime:
-		return "Exec queue wait time"
+		return "ExecQueueWait"
 	default:
-		return "Unknown query timing"
+		return "UnknownQueryTiming"
 	}
+}
+
+type QueryStats struct {
+	*TimerGroup
+
+	SeriesScanned int64
+	SeriesCovered int64
+}
+
+func NewQueryStats() *QueryStats {
+	return &QueryStats{TimerGroup: NewTimerGroup()}
+}
+
+func (p *QueryStats) MarshalJSON() ([]byte, error) {
+	timers := Timers{}
+	for _, timer := range p.timers {
+		timers = append(timers, timer)
+	}
+	sort.Sort(byCreationTimeSorter{timers})
+
+	returnStats := struct {
+		Timers        Timers `json:"timers"`
+		SeriesScanned int64  `json:"series_scanned"`
+		SeriesCovered int64  `json:"series_covered"`
+	}{
+		Timers:        timers,
+		SeriesScanned: p.SeriesScanned,
+		SeriesCovered: p.SeriesCovered,
+	}
+	return json.Marshal(returnStats)
+}
+
+func (p *QueryStats) UnmarshalJSON(d []byte) error {
+	panic("not implemented(cannot unmarshal into a QueryStats)")
 }

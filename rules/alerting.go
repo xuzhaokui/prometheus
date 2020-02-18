@@ -27,6 +27,7 @@ import (
 
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/template"
+	"github.com/prometheus/prometheus/util/stats"
 	"github.com/prometheus/prometheus/util/strutil"
 )
 
@@ -98,6 +99,8 @@ type AlertingRule struct {
 	// A map of alerts which are currently active (Pending or Firing), keyed by
 	// the fingerprint of the labelset they correspond to.
 	active map[model.Fingerprint]*Alert
+
+	stats *stats.QueryStats
 }
 
 // NewAlertingRule constructs a new AlertingRule.
@@ -167,6 +170,7 @@ func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.E
 	if err != nil {
 		return nil, err
 	}
+	r.stats = query.Stats()
 
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -274,6 +278,8 @@ func (r *AlertingRule) Eval(ctx context.Context, ts model.Time, engine *promql.E
 
 	return vec, nil
 }
+
+func (r *AlertingRule) LastStats() *stats.QueryStats { return r.stats }
 
 // State returns the maximum state of alert instances for this rule.
 // StateFiring > StatePending > StateInactive

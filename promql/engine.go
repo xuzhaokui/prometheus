@@ -191,7 +191,7 @@ type Query interface {
 	// Statement returns the parsed statement of the query.
 	Statement() Statement
 	// Stats returns statistics about the lifetime of the query.
-	Stats() *stats.TimerGroup
+	Stats() *stats.QueryStats
 	// Cancel signals that a running query execution should be aborted.
 	Cancel()
 }
@@ -203,7 +203,7 @@ type query struct {
 	// Statement of the parsed query.
 	stmt Statement
 	// Timer stats for the query execution.
-	stats *stats.TimerGroup
+	stats *stats.QueryStats
 	// Cancelation function for the query.
 	cancel func()
 
@@ -217,7 +217,7 @@ func (q *query) Statement() Statement {
 }
 
 // Stats implements the Query interface.
-func (q *query) Stats() *stats.TimerGroup {
+func (q *query) Stats() *stats.QueryStats {
 	return q.stats
 }
 
@@ -330,7 +330,7 @@ func (ng *Engine) newQuery(expr Expr, start, end model.Time, interval time.Durat
 	qry := &query{
 		stmt:  es,
 		ng:    ng,
-		stats: stats.NewTimerGroup(),
+		stats: stats.NewQueryStats(),
 	}
 	return qry
 }
@@ -347,7 +347,7 @@ func (ng *Engine) newTestQuery(f func(context.Context) error) Query {
 		q:     "test statement",
 		stmt:  testStmt(f),
 		ng:    ng,
-		stats: stats.NewTimerGroup(),
+		stats: stats.NewQueryStats(),
 	}
 	return qry
 }
@@ -433,6 +433,8 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 		if err != nil {
 			return nil, err
 		}
+		query.stats.SeriesScanned = evaluator.SeriesScanned()
+		query.stats.SeriesCovered = evaluator.SeriesCovered()
 
 		// Turn matrix and vector types with protected metrics into
 		// model.* types.
@@ -450,6 +452,7 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 
 	// Range evaluation.
 	sampleStreams := map[model.Fingerprint]*sampleStream{}
+	var seriesScanned, seriesCovered int64
 	for ts := s.Start; !ts.After(s.End); ts = ts.Add(s.Interval) {
 
 		if err := contextDone(ctx, "range evaluation"); err != nil {
@@ -466,6 +469,8 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 		if err != nil {
 			return nil, err
 		}
+		seriesScanned = evaluator.SeriesScanned()
+		seriesCovered = evaluator.SeriesCovered()
 
 		switch v := val.(type) {
 		case *model.Scalar:
@@ -523,6 +528,9 @@ func (ng *Engine) execEvalStmt(ctx context.Context, query *query, s *EvalStmt) (
 	sortTimer := query.stats.GetTimer(stats.ResultSortTime).Start()
 	sort.Sort(resMatrix)
 	sortTimer.Stop()
+
+	query.stats.SeriesScanned = seriesScanned
+	query.stats.SeriesCovered = seriesCovered
 
 	return resMatrix, nil
 }
@@ -604,7 +612,15 @@ type evaluator struct {
 	Timestamp         model.Time
 	StalenessDelta    time.Duration
 	MatStalenessDelta time.Duration
+
+	// 记录 evaluator 过程中实际扫描过的时序数量
+	seriesScanned int64
+	seriesCovered int64
 }
+
+func (ev *evaluator) SeriesScanned() int64 { return ev.seriesScanned }
+
+func (ev *evaluator) SeriesCovered() int64 { return ev.seriesCovered }
 
 // fatalf causes a panic with the input formatted into an error.
 func (ev *evaluator) errorf(format string, args ...interface{}) {
@@ -788,6 +804,7 @@ func (ev *evaluator) vectorSelector(node *VectorSelector) vector {
 	if ev.StalenessDelta > StalenessDelta && !strings.HasPrefix(node.Name, "om_nodata_") {
 		sd = ev.StalenessDelta
 	}
+	ev.seriesScanned += int64(len(node.iterators))
 	vec := vector{}
 	for _, it := range node.iterators {
 		refTime := ev.Timestamp.Add(-node.Offset)
@@ -826,6 +843,7 @@ func (ev *evaluator) matrixSelector(node *MatrixSelector) matrix {
 	if node.sdMin < 1 {
 		node.sdMin = 1
 	}
+	ev.seriesScanned += int64(len(node.iterators))
 
 	interval := metric.Interval{
 		OldestInclusive: ev.Timestamp.Add(-node.Range - node.Offset),
@@ -1108,6 +1126,7 @@ func resultMetric(lhs, rhs metric.Metric, op itemType, matching *VectorMatching)
 func (ev *evaluator) vectorScalarBinop(op itemType, lhs vector, rhs *model.Scalar, swap, returnBool bool) vector {
 	vec := make(vector, 0, len(lhs))
 
+	sampleCovered := int64(0)
 	for _, lhsSample := range lhs {
 		lv, rv := lhsSample.Value, rhs.Value
 		// lhs always contains the vector. If the original position was different
@@ -1131,7 +1150,9 @@ func (ev *evaluator) vectorScalarBinop(op itemType, lhs vector, rhs *model.Scala
 			}
 			vec = append(vec, lhsSample)
 		}
+		sampleCovered++
 	}
+	ev.seriesCovered = sampleCovered
 	return vec
 }
 

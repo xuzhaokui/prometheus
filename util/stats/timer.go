@@ -15,6 +15,7 @@ package stats
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -27,6 +28,24 @@ type Timer struct {
 	created  time.Time
 	start    time.Time
 	duration time.Duration
+}
+
+func (t *Timer) MarshalJSON() ([]byte, error) {
+	dur := time.Duration(t.duration/1e6) * 1e6
+	newt := struct {
+		Name     string  `json:"name"`
+		Created  int64   `json:"created"`
+		Start    int64   `json:"start"`
+		Duration float64 `json:"duration"`
+	}{
+		Name: t.name.String(), Created: t.created.Unix(),
+		Start: t.start.Unix(), Duration: dur.Seconds(),
+	}
+	return json.Marshal(newt)
+}
+
+func (t *Timer) UnmarshalJSON(d []byte) error {
+	panic("not implemented(cannot unmarshal into a Timer)")
 }
 
 // Start the timer.
